@@ -169,6 +169,14 @@ typedef enum{
 		DOT11_EVENT_WSC_PROBE_REQ_IND = 56,
 		DOT11_EVENT_WSC_PIN_IND = 57,
 		DOT11_EVENT_WSC_ASSOC_REQ_IE_IND = 58,
+		/* WPS2DOTX   */
+	/* support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */	
+		DOT11_EVENT_WSC_SET_MY_PIN = 102,
+		DOT11_EVENT_WSC_SPEC_SSID = 103,
+		DOT11_EVENT_WSC_SPEC_MAC_IND = 104,
+	/* support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */			
+	/* WPS2DOTX   */						
+
 #ifdef INCLUDE_WPS
 
 		DOT11_EVENT_WSC_SET_MIB=42,

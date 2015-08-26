@@ -661,7 +661,7 @@ int32 rtl865xC_lockSWCore(void)
 		WRITE_MEM32(PCRP4, ((READ_MEM32(PCRP4))&(~PauseFlowControlNway)) ); /* Jumbo Frame */
 		TOGGLE_BIT_IN_REG_TWICE(PCRP4,EnForceMode);
 
-#ifdef CONFIG_RTL_8196C_ESD
+#if 0 //def CONFIG_RTL_8196C_ESD
 		{
 			extern int _96c_esd_counter;
 			if (_96c_esd_counter) {

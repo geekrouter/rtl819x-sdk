@@ -123,16 +123,9 @@ typedef signed long long	INT64;
 #define HP_CCK_POWER_DEFAULT	16
 #endif
 
-#define TP_LOW (((unsigned int)(priv->ext_stats.tx_avarage>>17) + (unsigned int)(priv->ext_stats.rx_avarage>>17) <= 30) ? 1 : 0)
-
 #ifdef USB_POWER_SUPPORT
 #define USB_HT_2S_DIFF			14
 #define USB_RA_MASK				0x1e0fffff		// disable MCS 12, 11, 10, 9, 8
-/* Suggested by Wilson
- * MCS 15~13 & MCS 7~5 & 54M & 48M do NOT add power
- * Others add (Table Value - PWR_5G_DIFF)
- */
-#define PWR_5G_DIFF				3
 
 #endif
 
@@ -373,7 +366,12 @@ enum HAPD_EVENT{
 	HAPD_WDS_SETWPA = 6
 };
 #endif
-  	 
+
+enum ACL_MODE{
+	ACL_allow = 1,
+	ACL_deny = 2
+};
+
 #ifdef WIFI_WPAS
 enum WPAS_EVENT{
 	WPAS_EXIRED = 10,
@@ -721,6 +719,11 @@ struct stat_info {
 	unsigned int		sleep_to;
 	unsigned short		tpcache[8][TUPLE_WINDOW];
 	unsigned short		tpcache_mgt;	// mgt cache number
+
+#ifdef CLIENT_MODE 
+    unsigned short      tpcache_mcast;  // for client mode broadcast or multicast used 
+#endif 
+
 #ifdef _DEBUG_RTL8192CD_
 	unsigned int		rx_amsdu_err;
 	unsigned int		rx_amsdu_1pkt;
@@ -1166,6 +1169,13 @@ struct rf_finetune_var {
 #endif
 
 	unsigned char		pwr_by_rate;
+
+#if defined(TXPWR_LMT)
+	unsigned char		disable_txpwrlmt;
+#endif
+#ifdef CONFIG_RTL_92D_DMDP
+	unsigned char		peerReinit;
+#endif
 };
 
 
@@ -1217,7 +1227,7 @@ enum {
 #endif
 
 #ifdef CHECK_TX_HANGUP
-#define PENDING_PERIOD		40	// max time of pending period
+#define PENDING_PERIOD		60	// max time of pending period
 
 
 struct desc_check_info {
@@ -1376,6 +1386,7 @@ struct priv_shared_info {
 	struct tasklet_struct	oneSec_tasklet;
 #ifdef PCIE_POWER_SAVING
 	struct tasklet_struct	ps_tasklet;
+	unsigned int rf_phy_bb_backup[23];
 #endif
 #endif
 
@@ -1427,9 +1438,26 @@ struct priv_shared_info {
 
 #ifdef TXPWR_LMT
 	unsigned char			txpwr_lmt_buf[MAC_REG_SIZE];
-	unsigned int			txpwr_lmt;
-	unsigned char			ch_pwr_lmt20[SUPPORT_CH_NUM];
-	unsigned char			ch_pwr_lmt40[SUPPORT_CH_NUM];
+	unsigned int			txpwr_lmt_CCK;
+	unsigned int			txpwr_lmt_OFDM;
+	unsigned int			txpwr_lmt_HT1S;
+	unsigned int			txpwr_lmt_HT2S;
+	unsigned char			ch_pwr_lmtCCK[SUPPORT_CH_NUM];
+	unsigned char			ch_pwr_lmtOFDM[SUPPORT_CH_NUM];
+	unsigned char			ch_pwr_lmtHT20_1S[SUPPORT_CH_NUM];
+	unsigned char			ch_pwr_lmtHT20_2S[SUPPORT_CH_NUM];
+	unsigned char			ch_pwr_lmtHT40_1S[SUPPORT_CH_NUM];
+	unsigned char			ch_pwr_lmtHT40_2S[SUPPORT_CH_NUM];
+	unsigned char			ch_tgpwr_CCK[SUPPORT_CH_NUM];
+	unsigned char			ch_tgpwr_OFDM[SUPPORT_CH_NUM];
+	unsigned char			ch_tgpwr_HT20_1S[SUPPORT_CH_NUM];
+	unsigned char			ch_tgpwr_HT20_2S[SUPPORT_CH_NUM];
+	unsigned char			ch_tgpwr_HT40_1S[SUPPORT_CH_NUM];
+	unsigned char			ch_tgpwr_HT40_2S[SUPPORT_CH_NUM];
+	unsigned int			tgpwr_CCK;
+	unsigned int			tgpwr_OFDM;
+	unsigned int			tgpwr_HT1S;
+	unsigned int			tgpwr_HT2S;
 #endif
 
 //	unsigned char			phy_reg_2to1[PHY_REG_1T2R];
@@ -1467,6 +1495,7 @@ struct priv_shared_info {
 #endif
 
 	int						is_40m_bw;
+	int						is_40m_bw_bak;
 	int						offset_2nd_chan;
 //	int						is_giga_exist;
 
@@ -1537,6 +1566,19 @@ struct priv_shared_info {
 #ifdef RX_GAIN_TRACK_92D
 	unsigned int			RegRF3C[2];	//pathA / pathB
 	unsigned char			ThermalValue_RxGain;
+#endif
+	unsigned char			ThermalValue_Crystal;
+#ifdef DPK_92D
+	unsigned char			ThermalValue_DPK;
+	unsigned char			ThermalValue_DPKstore;
+	unsigned char			ThermalValue_DPKtrack;
+	unsigned char			bDPKworking;
+	struct timer_list		DPKTimer;
+	unsigned char			bDPKdone[2];
+	unsigned char			bDPKstore;
+	short					index_mapping_DPK_current[4][index_mapping_DPK_NUM];
+	int						OFDM_min_index_internalPA_DPK[2];
+	int						TxPowerLevelDPK[2];
 #endif
 	unsigned int			RegRF18[2];
 	unsigned int			RegRF28[2];
@@ -1647,6 +1689,9 @@ struct priv_shared_info {
 	unsigned int			rx_rpt_cck;
 	unsigned int			rx_rpt_ht;
 	unsigned int			successive_bb_hang;
+#ifdef CLIENT_MODE
+	unsigned int			AP_BW;
+#endif
 
 	unsigned long			rxFiFoO_pre;
 	unsigned int			pkt_in_hiQ;
@@ -1677,7 +1722,7 @@ struct priv_shared_info {
 
 	unsigned int			set_led_in_progress;
 
-	struct stat_info		*CurPstat; // for tx desc break field
+	struct stat_info*		CurPstat[4]; // for tx desc break field
 //	unsigned int			has_2r_sta; // Used when AP is 2T2R. bitmap of 2R aid
 	int						has_triggered_rx_tasklet;
 	int						has_triggered_tx_tasklet;
@@ -1856,6 +1901,8 @@ struct rtl8192cd_priv {
 	struct rtl8192cd_priv		*pvap_priv[RTL8192CD_NUM_VWLAN];	// ptr of private structure of vap interface
 	short					vap_id;
 	short					vap_init_seq;
+	unsigned char			func_off_already;
+	int						bcn_period_bak;
 #endif
 
 #ifdef DFS
@@ -2030,6 +2077,10 @@ struct timer_list			ps_timer;
 	struct bss_desc			dot11Bss_original;
 	int						hidden_ap_mib_backup;
 	unsigned	char		*pbeacon_ssid;
+	/*WPS client improve ; WPS2DOTX */
+	unsigned	char 		orig_SSID[33];
+	int 					orig_SSID_LEN;
+	/*WPS client improve ; WPS2DOTX */	
 #else
 	unsigned int			beaconbuf[128];
 #endif
@@ -2136,6 +2187,8 @@ struct timer_list			ps_timer;
 	struct tx_desc			*amsdu_first_desc;
 
 	unsigned int			bcnTxAGC;
+	unsigned int            bcnTxAGC_bak;
+	unsigned short          tx_beacon_len;
 
 #ifdef WIFI_11N_2040_COEXIST
 	struct obss_scan_para_elmt		obss_scan_para_buf;
@@ -2341,7 +2394,7 @@ struct timer_list			ps_timer;
 #ifdef WIFI_WPAS
 	unsigned char 	wpas_manual_assoc; //_Eric ??
 #endif
-
+	int		update_bcn_period;
 };
 
 struct rtl8192cd_chr_priv {

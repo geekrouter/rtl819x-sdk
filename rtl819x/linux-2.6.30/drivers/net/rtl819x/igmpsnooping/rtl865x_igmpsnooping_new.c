@@ -1286,7 +1286,21 @@ static struct rtl_clientEntry* rtl_searchClientEntry(uint32 ipVersion, struct rt
 	return NULL;
 }
 
+uint32 rtl_getAllClientPortMask(struct rtl_groupEntry* groupEntry)
+{
+	uint32 clientPortMask=0;
 
+	struct rtl_clientEntry* clientPtr = groupEntry->clientList; 
+	
+	while (clientPtr!=NULL)
+	{	
+
+		clientPortMask |=1<<(clientPtr->portNum);
+		clientPtr = clientPtr->next;
+	}
+
+	return clientPortMask;
+}
 /* link client Entry in the front of group client list */
 static void  rtl_linkClientEntry(struct rtl_groupEntry *groupEntry, struct rtl_clientEntry* clientEntry )
 {
@@ -2941,7 +2955,8 @@ static  uint32 rtl_processJoin(uint32 moduleIndex, uint32 ipVersion, uint32 port
 
 	uint32 hashIndex=0;
 	uint32 multicastRouterPortMask=rtl_getMulticastRouterPortMask(moduleIndex, ipVersion, rtl_sysUpSeconds);
-
+	uint32 allClientPortMask=0;
+	
 	if(ipVersion==IP_VERSION4)
 	{
 		if(pktBuf[0]==0x12)
@@ -3043,6 +3058,8 @@ static  uint32 rtl_processJoin(uint32 moduleIndex, uint32 ipVersion, uint32 port
 	clientEntry->igmpVersion=IGMP_V2;
 	clientEntry->groupFilterTimer=rtl_sysUpSeconds+rtl_mCastTimerParas.groupMemberAgingTime;	
 
+	allClientPortMask=rtl_getAllClientPortMask( groupEntry);
+		
 	#if defined (CONFIG_STATIC_RESERVED_MULTICAST)
 	if((groupEntry!=NULL) && (groupEntry->attribute==STATIC_RESERVED_MULTICAST))
 	{
@@ -3074,7 +3091,8 @@ static  uint32 rtl_processJoin(uint32 moduleIndex, uint32 ipVersion, uint32 port
 	#endif
 
 out:
-	return (multicastRouterPortMask&(~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	return (((~allClientPortMask)| multicastRouterPortMask) & (~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	//return (multicastRouterPortMask&(~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
 }
 
 static  uint32 rtl_processLeave(uint32 moduleIndex, uint32 ipVersion, uint32 portNum, uint32 *clientAddr, uint8 *pktBuf)
@@ -3086,7 +3104,7 @@ static  uint32 rtl_processLeave(uint32 moduleIndex, uint32 ipVersion, uint32 por
 	struct rtl_sourceEntry *nextSourceEntry=NULL;
 
 	uint32 hashIndex=0;
-	uint32 multicastRouterPortMask=rtl_getMulticastRouterPortMask(moduleIndex, ipVersion, rtl_sysUpSeconds);
+//	uint32 multicastRouterPortMask=rtl_getMulticastRouterPortMask(moduleIndex, ipVersion, rtl_sysUpSeconds);
 	
 	if(ipVersion==IP_VERSION4)
 	{
@@ -3182,7 +3200,9 @@ static  uint32 rtl_processLeave(uint32 moduleIndex, uint32 ipVersion, uint32 por
 #if defined (CONFIG_STATIC_RESERVED_MULTICAST)
 out:	
 #endif
-	return (multicastRouterPortMask&(~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	return ((~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	//return (multicastRouterPortMask&(~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	
 }
 
 static  int32 rtl_processIsInclude(uint32 moduleIndex, uint32 ipVersion, uint32 portNum, uint32 *clientAddr, uint8 *pktBuf)
@@ -3743,23 +3763,33 @@ static int32 rtl_processToInclude(uint32 moduleIndex, uint32 ipVersion,  uint32 
 					rtl_gluePrintf("run out of source entry!\n");
 					return FAILED;
 				}
+					
+				if(ipVersion==IP_VERSION4)
+				{	
+					newSourceEntry->sourceAddr[0]=sourceAddr[0];
+					
+				}
+#ifdef CONFIG_RTL_MLD_SNOOPING
+				else
+				{	
+					newSourceEntry->sourceAddr[0]=sourceAddr[0];
+					newSourceEntry->sourceAddr[1]=sourceAddr[1];
+					newSourceEntry->sourceAddr[2]=sourceAddr[2];
+					newSourceEntry->sourceAddr[3]=sourceAddr[3];
+				}
+#endif
 				newSourceEntry->portTimer=rtl_sysUpSeconds+rtl_mCastTimerParas.groupMemberAgingTime;
 				rtl_linkSourceEntry(clientEntry,newSourceEntry);
 			}
 			
 			if(ipVersion==IP_VERSION4)
 			{	
-				newSourceEntry->sourceAddr[0]=sourceAddr[0];
 				
 				sourceAddr++;
 			}
 #ifdef CONFIG_RTL_MLD_SNOOPING
 			else
 			{	
-				newSourceEntry->sourceAddr[0]=sourceAddr[0];
-				newSourceEntry->sourceAddr[1]=sourceAddr[1];
-				newSourceEntry->sourceAddr[2]=sourceAddr[2];
-				newSourceEntry->sourceAddr[3]=sourceAddr[3];
 
 				sourceAddr=sourceAddr+4;
 			}
@@ -4397,7 +4427,7 @@ static uint32 rtl_processIgmpv3Mldv2Reports(uint32 moduleIndex, uint32 ipVersion
 	uint8 recordType=0xff;
 	uint16 numOfSrc=0;
 	int32 returnVal=0;
-	uint32 multicastRouterPortMask=rtl_getMulticastRouterPortMask(moduleIndex, ipVersion, rtl_sysUpSeconds);
+	//uint32 multicastRouterPortMask=rtl_getMulticastRouterPortMask(moduleIndex, ipVersion, rtl_sysUpSeconds);
 	
 	if(ipVersion==IP_VERSION4)
 	{
@@ -4476,8 +4506,10 @@ static uint32 rtl_processIgmpv3Mldv2Reports(uint32 moduleIndex, uint32 ipVersion
 		}
 #endif		
 	}
-
-	return (multicastRouterPortMask&(~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	
+	/*no report supress, due to multiple group record in igmpv3 report*/
+	return ((~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
+	//return (multicastRouterPortMask&(~(1<<portNum))&((1<<MAX_SUPPORT_PORT_NUMBER)-1));
 	
 }
 

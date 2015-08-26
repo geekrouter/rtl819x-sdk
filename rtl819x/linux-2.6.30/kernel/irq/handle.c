@@ -269,9 +269,9 @@ int __init early_irq_init(void)
 	return arch_early_irq_init();
 }
 
- #if defined(CONFIG_RTL_819X)
- __MIPS16 __IRAM_GEN
- #endif
+#if defined(CONFIG_RTL_819X)
+__IRAM_GEN
+#endif
 struct irq_desc *irq_to_desc(unsigned int irq)
 {
 	return (irq < NR_IRQS) ? irq_desc + irq : NULL;

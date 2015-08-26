@@ -1679,7 +1679,7 @@ static int htb_syncHwQueue(struct net_device *dev)
 
 				tmpBandwidth1=queueInfo[i].ceil;
 				tmpBandwidth2=(tmpBandwidth1>>13)<<13;
-				if(tmpBandwidth1-tmpBandwidth2>4096)	// 4KByte which is 32kbit
+				if(tmpBandwidth1-tmpBandwidth2>(EGRESS_BANDWIDTH_GRANULARITY>>1))	// 4KByte which is 32kbit
 				{
 					queueInfo[i].bandwidth=queueInfo[i].ceil=((queueInfo[i].ceil>>13)+1)<<13;
 				}
@@ -1688,8 +1688,8 @@ static int htb_syncHwQueue(struct net_device *dev)
 					queueInfo[i].bandwidth=queueInfo[i].ceil=(queueInfo[i].ceil>>13)<<13;
 				}
 				
-				if(queueInfo[i].bandwidth<8192)	/* 8K bytes == 64K bits	*/
-					queueInfo[i].bandwidth=queueInfo[i].ceil=8192;
+				if(queueInfo[i].bandwidth<EGRESS_BANDWIDTH_GRANULARITY)	/* 8K bytes == 64K bits	*/
+					queueInfo[i].bandwidth=queueInfo[i].ceil=EGRESS_BANDWIDTH_GRANULARITY;
 			}
 			/*
 			else

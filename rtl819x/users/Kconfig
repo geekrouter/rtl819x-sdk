@@ -72,9 +72,15 @@ config APP_GDBSERVER
 
 config APP_GOAHEAD
 	bool "goahead"
+	depends on !APP_BOA
 	help
 	  A simple HTTPD Daemon. It provides web interface of the Wireless Gateway
 
+config APP_BOA
+	bool "boa"
+	help
+	  A simple HTTPD Daemon. It provides web interface of the Wireless Gateway
+	  
 config APP_GPROXY
 	bool "gproxy"
 	help
@@ -211,9 +217,20 @@ config APP_RTK_CMD
 
 config APP_SAMBA
 	bool "samba"
+	default n
 	help
 	  The samba daemon.
 
+choice
+	prompt "samba version"
+	depends on APP_SAMBA 
+	default APP_SAMBA-3.0.37
+
+	config APP_SAMBA-3.0.24
+		bool "samba-3.0.24"
+	config APP_SAMBA-3.0.37
+		bool "samba-3.0.37"
+endchoice
 config APP_SCRIPT
 	bool "scripts"
 	help

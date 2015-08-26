@@ -796,7 +796,9 @@ void mp_start_test(struct rtl8192cd_priv *priv)
 	delay_ms(1);
 
 #ifdef HIGH_POWER_EXT_PA
-	if (priv->pshare->rf_ft_var.use_ext_pa) {
+
+//_TXPWR_REDEFINE ?? shall also apply to Normal Driver ??
+	if ((priv->pshare->rf_ft_var.use_ext_pa) && (GET_CHIP_VER(priv)!=VERSION_8192D)) {
 		RTL_W8(0xc50, 0x2e);
 		RTL_W8(0xc58, 0x2e);
 	}
@@ -1082,11 +1084,19 @@ void mp_set_channel(struct rtl8192cd_priv *priv, unsigned char *data)
 					//PHY_SetRFReg(priv, eRFPath, rRfChannel, BIT(8), 1);
 					priv->pshare->RegRF18[eRFPath] |= BIT(16);
 					priv->pshare->RegRF18[eRFPath] |= BIT(8);
+					// CLOAD for RF paht_A/B (MP-chip)
+					if (val < 149)
+						PHY_SetRFReg(priv, eRFPath, 0xB, BIT(16)|BIT(15)|BIT(14), 0x7);
+					else
+						PHY_SetRFReg(priv, eRFPath, 0xB, BIT(16)|BIT(15)|BIT(14), 0x2);
 				} else {
 					//PHY_SetRFReg(priv, eRFPath, rRfChannel, BIT(16), 0);
 					//PHY_SetRFReg(priv, eRFPath, rRfChannel, BIT(8), 0);
 					priv->pshare->RegRF18[eRFPath] &= (~BIT(16));
 					priv->pshare->RegRF18[eRFPath] &= (~BIT(8));
+					
+					// CLOAD for RF paht_A/B (MP-chip)
+					PHY_SetRFReg(priv, eRFPath, 0xB, BIT(16)|BIT(15)|BIT(14), 0x7);
 				}
 				PHY_SetRFReg(priv, eRFPath, 0x18, bMask20Bits, priv->pshare->RegRF18[eRFPath]);
 			}else
@@ -1105,55 +1115,14 @@ void mp_set_channel(struct rtl8192cd_priv *priv, unsigned char *data)
 		reload_txpwr_pg(priv);
 
 #ifdef USB_POWER_SUPPORT
-		if (priv->pmib->dot11RFEntry.phyBandSelect==PHY_BAND_5G) {
+//_TXPWR_REDEFINE
+	{
 			int i;
-			/* 2010/12/30 Suggested by Wilson:
-			 * 5G MCS 15~13 & MCS 7~5 & 54M & 48M do NOT add power
-			 * Others add (Table Value - PWR_5G_DIFF)
-			 */
-			for (i=0; i<=3; i++){
-				priv->pshare->phw->OFDMTxAgcOffset_A[i] = (priv->pshare->phw->OFDMTxAgcOffset_A[i] < PWR_5G_DIFF)? 0: (priv->pshare->phw->OFDMTxAgcOffset_A[i] - PWR_5G_DIFF);
-				priv->pshare->phw->OFDMTxAgcOffset_B[i] = (priv->pshare->phw->OFDMTxAgcOffset_B[i] < PWR_5G_DIFF)? 0: (priv->pshare->phw->OFDMTxAgcOffset_B[i] - PWR_5G_DIFF);
+		for (i=8; i<=15; i++){
+			priv->pshare->phw->OFDMTxAgcOffset_A[i] = 0;
+			priv->pshare->phw->OFDMTxAgcOffset_B[i] = 0;
 			}
 
-			priv->pshare->phw->OFDMTxAgcOffset_A[7] = (priv->pshare->phw->OFDMTxAgcOffset_A[7] < PWR_5G_DIFF)? 0: (priv->pshare->phw->OFDMTxAgcOffset_A[7] - PWR_5G_DIFF);
-			priv->pshare->phw->OFDMTxAgcOffset_A[6] = (priv->pshare->phw->OFDMTxAgcOffset_A[6] < PWR_5G_DIFF)? 0: (priv->pshare->phw->OFDMTxAgcOffset_A[6] - PWR_5G_DIFF);
-			priv->pshare->phw->OFDMTxAgcOffset_A[5] = 0; // 48M 
-			priv->pshare->phw->OFDMTxAgcOffset_A[4] = 0; // 54M
-			
-			priv->pshare->phw->OFDMTxAgcOffset_B[7] = (priv->pshare->phw->OFDMTxAgcOffset_B[7] < PWR_5G_DIFF)? 0: (priv->pshare->phw->OFDMTxAgcOffset_B[7] - PWR_5G_DIFF);
-			priv->pshare->phw->OFDMTxAgcOffset_B[6] = (priv->pshare->phw->OFDMTxAgcOffset_B[6] < PWR_5G_DIFF)? 0: (priv->pshare->phw->OFDMTxAgcOffset_B[6] - PWR_5G_DIFF);
-			priv->pshare->phw->OFDMTxAgcOffset_B[5] = 0;
-			priv->pshare->phw->OFDMTxAgcOffset_B[4] = 0;
-
-
-			for (i=0; i<=3; i++) {
-				priv->pshare->phw->MCSTxAgcOffset_A[i] = (priv->pshare->phw->MCSTxAgcOffset_A[i] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_A[i] - PWR_5G_DIFF);
-				priv->pshare->phw->MCSTxAgcOffset_B[i] = (priv->pshare->phw->MCSTxAgcOffset_B[i] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_B[i] - PWR_5G_DIFF);
-			}
-			priv->pshare->phw->MCSTxAgcOffset_A[7] = (priv->pshare->phw->MCSTxAgcOffset_A[7] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_A[7] - PWR_5G_DIFF);
-			priv->pshare->phw->MCSTxAgcOffset_A[6] = 0; // mcs 5
-			priv->pshare->phw->MCSTxAgcOffset_A[5] = 0; // mcs 6
-			priv->pshare->phw->MCSTxAgcOffset_A[4] = 0; // mcs 7
-			
-			priv->pshare->phw->MCSTxAgcOffset_B[7] = (priv->pshare->phw->MCSTxAgcOffset_B[7] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_B[7] - PWR_5G_DIFF);
-			priv->pshare->phw->MCSTxAgcOffset_B[6] = 0;
-			priv->pshare->phw->MCSTxAgcOffset_B[5] = 0;
-			priv->pshare->phw->MCSTxAgcOffset_B[4] = 0;
-
-			for (i=8; i<=11; i++) {
-				priv->pshare->phw->MCSTxAgcOffset_A[i] = (priv->pshare->phw->MCSTxAgcOffset_A[i] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_A[i] - PWR_5G_DIFF);
-				priv->pshare->phw->MCSTxAgcOffset_B[i] = (priv->pshare->phw->MCSTxAgcOffset_B[i] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_B[i] - PWR_5G_DIFF);
-			}
-			priv->pshare->phw->MCSTxAgcOffset_A[15] = (priv->pshare->phw->MCSTxAgcOffset_A[15] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_A[15] - PWR_5G_DIFF);
-			priv->pshare->phw->MCSTxAgcOffset_A[14] = 0; // mcs 13
-			priv->pshare->phw->MCSTxAgcOffset_A[13] = 0; // mcs 14
-			priv->pshare->phw->MCSTxAgcOffset_A[12] = 0; // mcs 15
-			
-			priv->pshare->phw->MCSTxAgcOffset_B[15] = (priv->pshare->phw->MCSTxAgcOffset_B[15] < PWR_5G_DIFF)? 0: (priv->pshare->phw->MCSTxAgcOffset_B[15] - PWR_5G_DIFF);
-			priv->pshare->phw->MCSTxAgcOffset_B[14] = 0;
-			priv->pshare->phw->MCSTxAgcOffset_B[13] = 0;
-			priv->pshare->phw->MCSTxAgcOffset_B[12] = 0;
 		}
 #endif
 
@@ -1187,31 +1156,64 @@ void mp_set_channel(struct rtl8192cd_priv *priv, unsigned char *data)
 	}
 
 #ifdef TXPWR_LMT
-	if (priv->pmib->dot11RFEntry.target_pwr){
+	if (!priv->pshare->rf_ft_var.disable_txpwrlmt){
 		int i;
-		int max_idx=255;
+		int max_idx;
 		
 		find_pwr_limit(priv);
 
-		if (!priv->pshare->txpwr_lmt){
-			DEBUG_INFO("No limit for TxPower\n");
+		if (!priv->pshare->txpwr_lmt_OFDM || !priv->pshare->tgpwr_OFDM){
+			DEBUG_INFO("No limit for OFDM TxPower\n");
+			max_idx=255;
 		}else{
 			// maximum additional power index 
-			max_idx = (priv->pshare->txpwr_lmt - priv->pmib->dot11RFEntry.target_pwr)<<1;
+			max_idx = (priv->pshare->txpwr_lmt_OFDM - priv->pshare->tgpwr_OFDM); 
 		}
 
-		for (i=0; i<=8; i++) {
+		for (i=0; i<=7; i++) {
 			priv->pshare->phw->OFDMTxAgcOffset_A[i] = POWER_MIN_CHECK(priv->pshare->phw->OFDMTxAgcOffset_A[i], max_idx);
 			priv->pshare->phw->OFDMTxAgcOffset_B[i] = POWER_MIN_CHECK(priv->pshare->phw->OFDMTxAgcOffset_B[i], max_idx);
 			//printk("priv->pshare->phw->OFDMTxAgcOffset_A[%d]=%x\n",i, priv->pshare->phw->OFDMTxAgcOffset_A[i]);
 			//printk("priv->pshare->phw->OFDMTxAgcOffset_B[%d]=%x\n",i, priv->pshare->phw->OFDMTxAgcOffset_B[i]);
 		}
 		
-		for (i=0; i<=15; i++) {
+
+		if (!priv->pshare->txpwr_lmt_HT1S || !priv->pshare->tgpwr_HT1S){
+			DEBUG_INFO("No limit for HT1S TxPower\n");
+			max_idx=255;
+		}else{
+			// maximum additional power index 
+			max_idx = (priv->pshare->txpwr_lmt_HT1S - priv->pshare->tgpwr_HT1S);
+		}
+		
+		for (i=0; i<=7; i++) {
 			priv->pshare->phw->MCSTxAgcOffset_A[i] = POWER_MIN_CHECK(priv->pshare->phw->MCSTxAgcOffset_A[i], max_idx);
 			priv->pshare->phw->MCSTxAgcOffset_B[i] = POWER_MIN_CHECK(priv->pshare->phw->MCSTxAgcOffset_B[i], max_idx);
 			//printk("priv->pshare->phw->MCSTxAgcOffset_A[%d]=%x\n",i, priv->pshare->phw->MCSTxAgcOffset_A[i]);
 			//printk("priv->pshare->phw->MCSTxAgcOffset_B[%d]=%x\n",i, priv->pshare->phw->MCSTxAgcOffset_B[i]);
+		}
+
+		if (!priv->pshare->txpwr_lmt_HT2S || !priv->pshare->tgpwr_HT2S){
+			DEBUG_INFO("No limit for HT2S TxPower\n");
+			max_idx=255;
+		}else{
+			// maximum additional power index 
+			max_idx = (priv->pshare->txpwr_lmt_HT2S - priv->pshare->tgpwr_HT2S);
+		}
+		
+		for (i=8; i<=15; i++) {
+			priv->pshare->phw->MCSTxAgcOffset_A[i] = POWER_MIN_CHECK(priv->pshare->phw->MCSTxAgcOffset_A[i], max_idx);
+			priv->pshare->phw->MCSTxAgcOffset_B[i] = POWER_MIN_CHECK(priv->pshare->phw->MCSTxAgcOffset_B[i], max_idx);
+			//printk("priv->pshare->phw->MCSTxAgcOffset_A[%d]=%x\n",i, priv->pshare->phw->MCSTxAgcOffset_A[i]);
+			//printk("priv->pshare->phw->MCSTxAgcOffset_B[%d]=%x\n",i, priv->pshare->phw->MCSTxAgcOffset_B[i]);
+		}
+
+		if (!priv->pshare->txpwr_lmt_CCK || !priv->pshare->tgpwr_CCK){
+			DEBUG_INFO("No limit for CCK TxPower\n");
+			max_idx=255;
+		}else{
+			// maximum additional power index 
+			max_idx = (priv->pshare->txpwr_lmt_CCK - priv->pshare->tgpwr_CCK);
 		}
 
 		for (i=0; i<=3; i++) {
@@ -1353,11 +1355,7 @@ void mp_set_tx_power(struct rtl8192cd_priv *priv, unsigned char *data)
 	for (i=0; i<4; i++) {
 		if (priv->pshare->rf_ft_var.pwr_by_rate)
 		{
-#ifdef USB_POWER_SUPPORT
-			if (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_5G)
-				byte[i] = POWER_RANGE_CHECK(baseA-USB_HT_2S_DIFF);
-			else
-#endif
+			//_TXPWR_REDEFINE ?? #if 0 in FOX 
 			byte[i] = POWER_RANGE_CHECK(baseA + priv->pshare->phw->MCSTxAgcOffset_A[i+8]);
 		}
 		else
@@ -1376,11 +1374,7 @@ void mp_set_tx_power(struct rtl8192cd_priv *priv, unsigned char *data)
 	for (i=0; i<4; i++) {
 		if (priv->pshare->rf_ft_var.pwr_by_rate)
 		{
-#ifdef USB_POWER_SUPPORT
-			if (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_5G)
-				byte[i] = POWER_RANGE_CHECK(baseA-USB_HT_2S_DIFF);
-			else
-#endif
+			//_TXPWR_REDEFINE ?? #if 0 in FOX 
 			byte[i] = POWER_RANGE_CHECK(baseA + priv->pshare->phw->MCSTxAgcOffset_A[i+12]);
 		}
 		else
@@ -1466,11 +1460,7 @@ void mp_set_tx_power(struct rtl8192cd_priv *priv, unsigned char *data)
 	for (i=0; i<4; i++) {
 		if (priv->pshare->rf_ft_var.pwr_by_rate)
 		{
-#ifdef USB_POWER_SUPPORT
-			if (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_5G)
-				byte[i] = POWER_RANGE_CHECK(baseB-USB_HT_2S_DIFF);
-			else
-#endif
+			//_TXPWR_REDEFINE ?? #if 0 in FOX 
 			byte[i] = POWER_RANGE_CHECK(baseB + priv->pshare->phw->MCSTxAgcOffset_B[i+8]);
 		}
 		else
@@ -1490,11 +1480,7 @@ void mp_set_tx_power(struct rtl8192cd_priv *priv, unsigned char *data)
 	for (i=0; i<4; i++) {
 		if (priv->pshare->rf_ft_var.pwr_by_rate)
 		{
-#ifdef USB_POWER_SUPPORT
-			if (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_5G)
-				byte[i] = POWER_RANGE_CHECK(baseB-USB_HT_2S_DIFF);
-			else
-#endif
+			//_TXPWR_REDEFINE ?? #if 0 in FOX 
 			byte[i] = POWER_RANGE_CHECK(baseB + priv->pshare->phw->MCSTxAgcOffset_B[i+12]);
 		}
 		else
@@ -1913,11 +1899,13 @@ void mp_ctx(struct rtl8192cd_priv *priv, unsigned char *data)
 			delay_us(100);
 
 #ifdef HIGH_POWER_EXT_PA
+			if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)){
 			if(priv->pshare->rf_ft_var.use_ext_pa) {
 				PHY_SetBBReg(priv, 0x860, BIT(10), 0x1);
 				PHY_SetBBReg(priv, 0x864, BIT(10), 0x1);
 				PHY_SetBBReg(priv, 0x870, BIT(10), 0x1);
 				PHY_SetBBReg(priv, 0x870, BIT(26), 0x1);
+			}
 			}
 #endif
 
@@ -2140,9 +2128,11 @@ stop_tx:
 				delay_us(100);
 
 #ifdef HIGH_POWER_EXT_PA
+				if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)){
 				if(priv->pshare->rf_ft_var.use_ext_pa) {
 					PHY_SetBBReg(priv, 0x870, BIT(10), 0x0);
 					PHY_SetBBReg(priv, 0x870, BIT(26), 0x0);
+				}
 				}
 #endif
 			}
@@ -3480,9 +3470,11 @@ static void mp_chk_sw_ant(struct rtl8192cd_priv *priv)
 			r_ant_select_ofdm_val = 0x11111111;
 
 #ifdef HIGH_POWER_EXT_PA
+			if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)){
 			if(priv->pshare->rf_ft_var.use_ext_pa) {
 			PHY_SetBBReg(priv, 0x870, BIT(26), 1);
 			PHY_SetBBReg(priv, 0x870, BIT(10), 0);
+			}
 			}
 #endif
 		break;
@@ -3501,10 +3493,12 @@ static void mp_chk_sw_ant(struct rtl8192cd_priv *priv)
 			r_ant_select_ofdm_val = 0x22222222;
 
 #ifdef HIGH_POWER_EXT_PA
+		if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)){
 		if (priv->pshare->rf_ft_var.use_ext_pa) {
 			PHY_SetBBReg(priv, 0x870, BIT(26), 0);
 			PHY_SetBBReg(priv, 0x870, BIT(10), 1);
 			}
+		}
 #endif
 		break;
 	case ANTENNA_AB:
@@ -3521,9 +3515,11 @@ static void mp_chk_sw_ant(struct rtl8192cd_priv *priv)
 		r_ant_select_ofdm_val		= 0x3321333;
 
 #ifdef HIGH_POWER_EXT_PA
+		if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)){
 		if (priv->pshare->rf_ft_var.use_ext_pa) {
 			PHY_SetBBReg(priv, 0x870, BIT(26), 0);
 			PHY_SetBBReg(priv, 0x870, BIT(10), 0);
+		}
 		}
 #endif
 		break;

@@ -124,22 +124,37 @@ function validate_pin_code(code)
 	return (0 == (accum % 10));	
 }
 
+
+// modify for WPS2DOTX  test case 4.2.4  ; PIN input can filter whitespace and dash
 function check_pin_code(str)
 {
 	var i;
-	var code_len;
-		
+	var code_len;		
 	code_len = str.length;
-	if (code_len != 8 && code_len != 4)
-		return 1;
 
-	for (i=0; i<code_len; i++) {
+	var codestr="";		
+
+	for (i=0; i<str.length; i++) {
+
+		if ((str.charAt(i) == ' ') || (str.charAt(i) == '-')){
+			code_len --;
+			continue ;
+		}else{
+			codestr += str.charAt(i);
+		}
+					
 		if ((str.charAt(i) < '0') || (str.charAt(i) > '9'))
 			return 2;
+			
 	}
+	
 
+	
+	if (code_len != 8 && code_len != 4)
+		return 1;
+		
 	if (code_len == 8) {
-		var code = parseInt(str, 10);
+		var code = parseInt(codestr, 10);
 		if (!validate_pin_code(code))
 			return 3;
 		else
@@ -148,6 +163,7 @@ function check_pin_code(str)
 	else
 		return 0;
 }
+// modify for WPS2DOTX  test case 4.2.4  ; PIN input can filter whitespace and dash
 
 function setPinClicked(peerPingObj)
 {
@@ -387,6 +403,12 @@ function Load_Setting()
 <tr>
   <td width="40%"><font size="2"><b>PIN Configuration:</b></font></td> 
   <td width="60%"><font size="2">
+<!--WPS2DOTX for client mode improved --> 
+    <b>Special Target AP MAC:</b>
+    <input type="text" name="targetAPMac" size="12" maxlength="17" value="">
+    <b>Special Target AP SSID:</b>
+    <input type="text" name="targetAPSsid" size="20" maxlength="33" value="">		
+<!--WPS2DOTX for client mode improved --> 
   	<input type="submit" value="Start PIN" name="triggerPIN" onClick="return triggerPINClicked()"></td>
 	</font></td>  
 </tr>
@@ -404,7 +426,14 @@ function Load_Setting()
   	<input type="submit" value="Start PBC" name="triggerPBC" onClick="return triggerPBCClicked()"></td>
 	</font></td>  
 </tr>
-
+<!--WPS2DOTX for client mode improved --> 
+<tr>
+  <td width="40%"><font size="2"><b>STOP WSC</b></font></td> 
+  <td width="60%"><font size="2">
+  	<input type="submit" value="Stop WSC" name="stopwsc" onClick=""></td>
+	</font></td>  
+</tr>
+<!--WPS2DOTX for client mode improved --> 
 
 
  <script>

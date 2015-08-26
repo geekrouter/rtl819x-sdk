@@ -51,7 +51,7 @@ static unsigned int cmd_counter = 0;
 #define ASSERT(x)
 #define DEBUG(...)
 #endif
-//#define NTFS_3G 1
+#define NTFS_3G 1
 
 static char CMD_UMOUNT_FMT[] = "/bin/umount %s";
 static char CMD_MOUNT_FMT[] = "/bin/mount -t %s /dev/%s %s";

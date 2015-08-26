@@ -3494,9 +3494,9 @@ $L583:
 	.end	strtoint
 	.rdata
 	.align	2
-	.type	__func__.0, @object
-	.size	__func__.0, 34
-__func__.0:
+	.type	__func__.1, @object
+	.size	__func__.1, 34
+__func__.1:
 	.ascii	"Add_Pattern_ACL_For_ContentFilter\000"
 	.section	.text.Add_Pattern_ACL_For_ContentFilter,"ax",@progbits
 	.align	2
@@ -3649,99 +3649,29 @@ $L596:
 	.end	filter_item_regist
 	.rdata
 	.align	2
-	.type	__func__.1, @object
-	.size	__func__.1, 34
-__func__.1:
+	.type	__func__.0, @object
+	.size	__func__.0, 34
+__func__.0:
 	.ascii	"Del_Pattern_ACL_For_ContentFilter\000"
-	.section	.text.filter_table_flush,"ax",@progbits
+	.section	.text.Del_Pattern_ACL_For_ContentFilter,"ax",@progbits
 	.align	2
-	.globl	filter_table_flush
-	.ent	filter_table_flush
-	.type	filter_table_flush, @function
-filter_table_flush:
+	.globl	Del_Pattern_ACL_For_ContentFilter
+	.ent	Del_Pattern_ACL_For_ContentFilter
+	.type	Del_Pattern_ACL_For_ContentFilter, @function
+Del_Pattern_ACL_For_ContentFilter:
 	.set	nomips16
-	.frame	$sp,96,$31		# vars= 56, regs= 6/0, args= 16, gp= 0
-	.mask	0x801f0000,-4
+	.frame	$sp,80,$31		# vars= 56, regs= 2/0, args= 16, gp= 0
+	.mask	0x80010000,-4
 	.fmask	0x00000000,0
-	addiu	$sp,$sp,-96
-	sw	$19,84($sp)
-	lui	$19,%hi(table_list_head)
-	sw	$17,76($sp)
-	addiu	$2,$19,%lo(table_list_head)
-	lw	$17,%lo(table_list_head)($19)
-	sw	$31,92($sp)
-	sw	$20,88($sp)
-	sw	$18,80($sp)
-	sw	$16,72($sp)
-	lw	$20,0($17)
-	.set	noreorder
-	.set	nomacro
-	beq	$17,$2,$L632
-	li	$3,1			# 0x1
-	.set	macro
-	.set	reorder
-
-$L626:
-	lw	$6,8($17)
-	addiu	$18,$17,8
-$L631:
-	lw	$16,0($6)
-	.set	noreorder
-	.set	nomacro
-	beq	$6,$18,$L630
-	li	$2,1048576			# 0x100000
-	.set	macro
-	.set	reorder
-
-	lw	$5,4($6)
-	lw	$3,0($6)
-	ori	$2,$2,0x100
-	move	$4,$6
-	sw	$3,0($5)
-	sw	$2,0($6)
-	li	$2,2097152			# 0x200000
-	ori	$2,$2,0x200
-	sw	$5,4($3)
-	.set	noreorder
-	.set	nomacro
-	jal	kfree
-	sw	$2,4($6)
-	.set	macro
-	.set	reorder
-
-	move	$6,$16
-	lw	$2,24($17)
-	addiu	$2,$2,-1
-	.set	noreorder
-	.set	nomacro
-	j	$L631
-	sw	$2,24($17)
-	.set	macro
-	.set	reorder
-
-$L630:
-	lw	$3,16($17)
-	li	$2,3			# 0x3
-	.set	noreorder
-	.set	nomacro
-	bne	$3,$2,$L617
-	li	$2,1			# 0x1
-	.set	macro
-	.set	reorder
-
-	lw	$18,24($17)
-	.set	noreorder
-	.set	nomacro
-	bne	$18,$2,$L617
+	addiu	$sp,$sp,-80
+	li	$6,52			# 0x34
 	addiu	$4,$sp,16
-	.set	macro
-	.set	reorder
-
 	move	$5,$0
+	sw	$31,76($sp)
 	.set	noreorder
 	.set	nomacro
 	jal	memset
-	li	$6,52			# 0x34
+	sw	$16,72($sp)
 	.set	macro
 	.set	reorder
 
@@ -3775,29 +3705,23 @@ $L630:
 	.set	macro
 	.set	reorder
 
-	.set	noreorder
-	.set	nomacro
-	beq	$2,$0,$L617
 	move	$16,$2
-	.set	macro
-	.set	reorder
-
 	.set	noreorder
 	.set	nomacro
-	jal	rtl_get_ps_drv_netif_mapping_by_psdev
+	beq	$2,$0,$L607
 	move	$4,$2
 	.set	macro
 	.set	reorder
 
-	move	$5,$2
+	jal	rtl_get_ps_drv_netif_mapping_by_psdev
 #APP
 	   
 
-	1:	ll	    $2, 452($16)		# atomic_sub		
+	1:	ll	    $3, 452($16)		# atomic_sub		
        nop                                             
-	subu	$2, $18					
-	sc	    $2, 452($16)					
-	beqz	$2, 2f					
+	subu	$3, 1					
+	sc	    $3, 452($16)					
+	beqz	$3, 2f					
 	.subsection 2					
 2:	b	1b					
 	.previous					
@@ -3805,70 +3729,133 @@ $L630:
 	   
 
 #NO_APP
+	addiu	$5,$2,12
 	.set	noreorder
 	.set	nomacro
-	beq	$5,$0,$L617
-	addiu	$5,$5,12
-	.set	macro
-	.set	reorder
-
-	.set	noreorder
-	.set	nomacro
-	jal	rtl865x_del_pattern_acl_for_contentFilter
+	beq	$2,$0,$L607
 	addiu	$4,$sp,16
 	.set	macro
 	.set	reorder
 
-$L617:
-	lw	$3,0($17)
+	jal	rtl865x_del_pattern_acl_for_contentFilter
+$L607:
+	lw	$31,76($sp)
+	move	$2,$0
+	lw	$16,72($sp)
+	.set	noreorder
+	.set	nomacro
+	j	$31
+	addiu	$sp,$sp,80
+	.set	macro
+	.set	reorder
+
+	.end	Del_Pattern_ACL_For_ContentFilter
+	.section	.text.filter_table_flush,"ax",@progbits
+	.align	2
+	.globl	filter_table_flush
+	.ent	filter_table_flush
+	.type	filter_table_flush, @function
+filter_table_flush:
+	.set	nomips16
+	.frame	$sp,40,$31		# vars= 0, regs= 6/0, args= 16, gp= 0
+	.mask	0x801f0000,-4
+	.fmask	0x00000000,0
+	.set	noreorder
+	.set	nomacro
+	
+	addiu	$sp,$sp,-40
+	sw	$19,28($sp)
+	lui	$19,%hi(table_list_head)
+	sw	$16,16($sp)
+	addiu	$2,$19,%lo(table_list_head)
+	lw	$16,%lo(table_list_head)($19)
+	sw	$31,36($sp)
+	sw	$20,32($sp)
+	sw	$18,24($sp)
+	sw	$17,20($sp)
+	lw	$20,0($16)
+	beq	$16,$2,$L632
+	li	$3,1			# 0x1
+
+$L626:
+	lw	$6,8($16)
+	addiu	$18,$16,8
+$L631:
+	lw	$17,0($6)
+	beq	$6,$18,$L630
 	li	$2,1048576			# 0x100000
-	lw	$5,4($17)
+
+	lw	$5,4($6)
+	lw	$3,0($6)
 	ori	$2,$2,0x100
-	move	$4,$17
+	move	$4,$6
 	sw	$3,0($5)
-	sw	$2,0($17)
+	sw	$2,0($6)
 	li	$2,2097152			# 0x200000
 	ori	$2,$2,0x200
 	sw	$5,4($3)
-	sw	$2,4($17)
-	.set	noreorder
-	.set	nomacro
 	jal	kfree
-	move	$17,$20
-	.set	macro
-	.set	reorder
+	sw	$2,4($6)
+
+	move	$6,$17
+	lw	$2,24($16)
+	addiu	$2,$2,-1
+	j	$L631
+	sw	$2,24($16)
+
+$L630:
+	lw	$3,16($16)
+	li	$2,3			# 0x3
+	bne	$3,$2,$L623
+	li	$2,1			# 0x1
+
+	lw	$3,24($16)
+	bne	$3,$2,$L623
+	nop
+
+	jal	Del_Pattern_ACL_For_ContentFilter
+	nop
+
+$L623:
+	lw	$3,0($16)
+	li	$2,1048576			# 0x100000
+	lw	$5,4($16)
+	ori	$2,$2,0x100
+	move	$4,$16
+	sw	$3,0($5)
+	sw	$2,0($16)
+	li	$2,2097152			# 0x200000
+	ori	$2,$2,0x200
+	sw	$5,4($3)
+	sw	$2,4($16)
+	jal	kfree
+	move	$16,$20
 
 	addiu	$3,$19,%lo(table_list_head)
 	lw	$2,24($3)
 	lw	$20,0($20)
 	addiu	$2,$2,-1
-	.set	noreorder
-	.set	nomacro
-	bne	$17,$3,$L626
+	bne	$16,$3,$L626
 	sw	$2,24($3)
-	.set	macro
-	.set	reorder
 
 	li	$3,1			# 0x1
 $L632:
 	lui	$4,%hi(filter_rule_num)
-	lw	$31,92($sp)
+	lw	$31,36($sp)
 	move	$2,$0
-	lw	$20,88($sp)
-	lw	$19,84($sp)
-	lw	$18,80($sp)
-	lw	$17,76($sp)
-	lw	$16,72($sp)
-	addiu	$sp,$sp,96
+	lw	$20,32($sp)
+	lw	$19,28($sp)
+	lw	$18,24($sp)
+	lw	$17,20($sp)
+	lw	$16,16($sp)
+	addiu	$sp,$sp,40
 	sw	$3,%lo(filter_rule_num)($4)
 	lui	$3,%hi(log_enable)
-	.set	noreorder
-	.set	nomacro
 	j	$31
 	sw	$0,%lo(log_enable)($3)
+
 	.set	macro
 	.set	reorder
-
 	.end	filter_table_flush
 	.rdata
 	.align	2

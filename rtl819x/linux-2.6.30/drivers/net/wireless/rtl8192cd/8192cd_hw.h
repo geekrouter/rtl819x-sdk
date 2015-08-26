@@ -896,8 +896,14 @@ struct rtl8192cd_hw {
 	char				MCSTxAgcOffset_B[16];
 	char				OFDMTxAgcOffset_A[8];
 	char				OFDMTxAgcOffset_B[8];
-	int					CCKTxAgc_A[4];
-	int					CCKTxAgc_B[4];
+
+	//_TXPWR_REDEFINE ?? int or char ??
+#if 0
+	int				CCKTxAgc_A[4];
+	int				CCKTxAgc_B[4];	
+#endif
+	char				CCKTxAgc_A[4];
+	char				CCKTxAgc_B[4];
 
 	unsigned int				NumTotalRFPath;
 	/*PHY related*/
@@ -950,6 +956,8 @@ struct rtl8192cd_hw {
 
 	unsigned char				check_reg824;
 	unsigned int				reg824_bit9;
+	unsigned char				InternalPA5G[2];
+	unsigned char				bNewTxGainTable;
 };
 
 //1-------------------------------------------------------------------
@@ -1462,10 +1470,12 @@ typedef enum _PHYREG_PG_TBL_IDX_ {
 
 typedef enum _TXPWR_LMT_TBL_IDX_ {
 	NO_RESTRICT = 0,
-	FCC_20M = 1,
-	FCC_40M = 2,
-	CE_20M = 3,
-	CE_40M = 4
+	FCC_CCK = 1,
+	FCC_OFDM = 2,
+	FCC_20M1S = 3,
+	FCC_20M2S = 4,
+	FCC_40M1S = 5,
+	FCC_40M2S = 6,
 }TXPWR_LMT_TBL_IDX;
 
 #endif
@@ -1493,6 +1503,15 @@ struct MacRegTable {
 	unsigned int	mask;
 	unsigned int	value;
 };
+
+#ifdef TXPWR_LMT
+struct TxPwrLmtTable {
+	unsigned int	start;
+	unsigned int	end;
+	unsigned int	limit;
+	unsigned int	target;
+};
+#endif
 
 struct PhyRegTable {
 	unsigned int	offset;

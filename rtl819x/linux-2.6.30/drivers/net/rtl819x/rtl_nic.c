@@ -214,7 +214,7 @@ static int32 initPortStateCtrl(void);
 static void  exitPortStateCtrl(void);
 #endif
 #if defined(CONFIG_RTL_ETH_PRIV_SKB)
-static struct sk_buff *dev_alloc_skb_priv_eth(unsigned int size);
+__MIPS16 __IRAM_FWD static struct sk_buff *dev_alloc_skb_priv_eth(unsigned int size);
 static void init_priv_eth_skb_buf(void);
 #endif
 
@@ -529,6 +529,7 @@ uint32 port_linkpartner_eee = 0;
 
 #ifdef CONFIG_RTL_8196C_ESD
 int _96c_esd_counter = 0;
+int _96c_esd_reboot_counter = 0;
 #endif
 
 #if defined(PATCH_GPIO_FOR_LED)
@@ -1086,8 +1087,12 @@ static void rtl865x_setPortForward(int port_num, int forward)
 	if(port_num < 0 || port_num >= RTL8651_AGGREGATOR_NUMBER)
 		return;
 
-	if(forward == FALSE)
+	if(forward == FALSE) {
 		REG32(PCRP0+(port_num<<2))= ((REG32(PCRP0+(port_num<<2)))&(~EnablePHYIf));
+#ifdef CONFIG_RTL_8196C_ESD
+		_96c_esd_counter = 0;		// stop counting
+#endif
+	}
 	else
 		REG32(PCRP0+(port_num<<2))= ((REG32(PCRP0+(port_num<<2)))|(EnablePHYIf));
 	TOGGLE_BIT_IN_REG_TWICE(PCRP0+(port_num<<2),EnForceMode);
@@ -1114,6 +1119,7 @@ static void rtl865x_enableDevPortForward(struct net_device *dev, struct dev_priv
 	}
 #ifdef CONFIG_RTL_8196C_ESD
 	_96c_esd_counter = 1;		// start counting and check ESD
+	_96c_esd_reboot_counter = 0;	// reset counter
 #endif
 }
 
@@ -1129,7 +1135,7 @@ static void rtk_queue_init(struct ring_que *que)
 	memset(que, 0, sizeof(struct ring_que));
 	que->ring = (struct sk_buff **)kmalloc(
 		(sizeof(struct skb_buff*)*(rtl865x_maxPreAllocRxSkb+1))
-		,GFP_KERNEL);
+		,GFP_ATOMIC);
 	memset(que->ring, 0, (sizeof(struct sk_buff *))*(rtl865x_maxPreAllocRxSkb+1));
 	que->qmax = rtl865x_maxPreAllocRxSkb;
 }
@@ -1201,7 +1207,13 @@ static void refill_rx_skb(void)
 	int			idx;
 
 	idx = RTL865X_SWNIC_RXRING_MAX_PKTDESC -1;
-	while (rx_skb_queue.qlen < rtl865x_maxPreAllocRxSkb || ((idx>=0)&&(SUCCESS==check_rx_pkthdr_ring(idx, &idx)))) {
+
+#ifdef DELAY_REFILL_ETH_RX_BUF
+	while (rx_skb_queue.qlen < rtl865x_maxPreAllocRxSkb || ((idx>=0)&&(SUCCESS==check_rx_pkthdr_ring(idx, &idx)))) 
+#else
+	while (rx_skb_queue.qlen < rtl865x_maxPreAllocRxSkb) 
+#endif
+	{
 		#if defined(CONFIG_RTL_ETH_PRIV_SKB)
 		skb = dev_alloc_skb_priv_eth(CROSS_LAN_MBUF_LEN);
 		#else
@@ -2132,10 +2144,17 @@ static inline int32 rtl_decideRxDevice(rtl_nicRx_info *info)
 	#if defined(CONFIG_RTL_STP)
 	int32 			dev_no;
 	#endif
+	#if defined(CONFIG_RTL_CUSTOM_PASSTHRU)
+	unsigned char dest_mac[MAX_ADDR_LEN];
+	#endif
 
 	pid = info->pid;
 	skb = info->input;
 	data = skb->data;
+	#if defined(CONFIG_RTL_CUSTOM_PASSTHRU)
+	memcpy(dest_mac, data, 6);
+	#endif
+
 
 	info->isPdev=FALSE;
 	ret = SUCCESS;
@@ -2202,7 +2221,8 @@ static inline int32 rtl_decideRxDevice(rtl_nicRx_info *info)
 			ret = FAILED;;
 		}
 		#if defined(CONFIG_RTL_CUSTOM_PASSTHRU)
-		else if (SUCCESS==rtl_isPassthruFrame(data)&&(rtl_isWanDev(cp)==TRUE))
+		else if (SUCCESS==rtl_isPassthruFrame(data)&&(rtl_isWanDev(cp)==TRUE)
+			&& (compare_ether_addr((char* )cp->dev->dev_addr, (char*)dest_mac)))
 		{
 			info->priv = _rtl86xx_dev.pdev->priv;
 			info->isPdev=TRUE;
@@ -2366,15 +2386,15 @@ static inline void rtl_processRxFrame(rtl_nicRx_info *info)
 		#endif
 		{
 			cp_this->net_stats.rx_dropped++;
-                    	dev_kfree_skb_any(skb);
-                   	return;
+			dev_kfree_skb_any(skb);
+			return;
 		}
 	}
 
 	if (skb->head==NULL||skb->end==NULL)
 	{
 		dev_kfree_skb_any(skb);
-              return;
+		return;
 	}
 	/*	sanity check end 	*/
 
@@ -2757,21 +2777,29 @@ static int re865x_checkPhySnr(void)
 
 	unsigned int port;
 	unsigned int snr=0;
-	unsigned int  val, val2;
+	unsigned int  val, cb0, agc;
 	for (port=0; port<RTL8651_PHY_NUMBER; port++)
 	{
 		if((1<<port) & (newLinkPortMask & (~curLinkPortMask)) )
 		{
 			snr=re865x_getPhySnr(port);
-			//printk("%s:%d, port is %d, snr is %d\n",__FUNCTION__,__LINE__,port,snr);
-			 rtl8651_getAsicEthernetPHYReg( port, 17, &val );
-			 val = (val & 0xfff0) | 0x8;
-			 rtl8651_setAsicEthernetPHYReg(port, 17, val );
+		
+			// 3. for cb0
+                        rtl8651_getAsicEthernetPHYReg( port, 17, &val );
+                        val = (val & 0xfff0) | 0x8;
+                        rtl8651_setAsicEthernetPHYReg( port, 17, val );
+                        rtl8651_getAsicEthernetPHYReg( port, 29, &cb0 );
 
-			 rtl8651_getAsicEthernetPHYReg( port, 29, &val2 );
-
-			if( ((val2 & 0x80) != 0)|| (snr>4155))
+			  // 2. for AGC
+                        val = (val & 0xfff0) | 0x1;
+                        rtl8651_setAsicEthernetPHYReg( port, 17, val );
+                        rtl8651_getAsicEthernetPHYReg(port, 29, &agc );
+			//printk("snr is %d\n",snr);
+			//printk("cb0 is 0x%x,agc is 0x%x\n",cb0,agc);
+			//if( ((cb0 & 0x80) != 0)|| (snr>4155))
+		  	if ( ( ( ((agc & 0x70) >> 4) < 4    ) && ((cb0 & 0x80) != 0) ) || (snr > 4155) ) 
 			{
+				//printk("restart nway\n");
 				rtl8651_restartAsicEthernetPHYNway(port);
 			}
 			val = val & 0xfff0;
@@ -3284,8 +3312,9 @@ static void one_sec_timer(unsigned long task_priv)
 #endif
 	if (_96c_esd_counter) {
 
+		extern int is_fault;
+#if 0
 		if (++_96c_esd_counter >= 20) {
-			extern int is_fault;
 
 			if( (RTL_R32(PCRP4) & EnablePHYIf) == 0)
 			{
@@ -3294,6 +3323,20 @@ static void one_sec_timer(unsigned long task_priv)
 			}
 			_96c_esd_counter = 1;
 		}
+#else
+		if( (RTL_R32(PCRP4) & EnablePHYIf) == 0)
+		{
+			if (++_96c_esd_reboot_counter >= 20) {
+				panic_printk("  ESD reboot...\n");
+				is_fault = 1;
+			}
+		}
+		else {
+			_96c_esd_reboot_counter = 0;
+		}
+#endif
+
+
 	}
 #endif
 
@@ -4105,7 +4148,9 @@ static inline int rtl_isHwlookup(struct sk_buff *skb, struct dev_priv *cp, uint3
 	} else
 #endif
 	if (flag==FALSE) {
+#if defined(CONFIG_RTL_MULTI_LAN_DEV) || defined(CONFIG_POCKET_ROUTER_SUPPORT) || defined(CONFIG_RTK_VLAN_SUPPORT)
 assign_portmask:
+#endif
 		*portlist = cp->portmask;
 	}
 
@@ -4174,20 +4219,23 @@ static int re865x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	retval = rtl_preProcess_xmit(&nicTx);
 
 	if(FAILED == retval)
+	{
 		return 0;
-
+	}
 	tx_skb = nicTx.out_skb;
 	cp = tx_skb->dev->priv;
 
 	if((cp->id==0) || (cp->portmask ==0)) {
-		dev_kfree_skb_any(tx_skb);
+		dev_kfree_skb_any(tx_skb);		
 		return 0;
 	}
 
 #if defined (CONFIG_RTL_IGMP_SNOOPING)
 	retval = rtl_fill_txInfo(&nicTx);
 	if(FAILED == retval)
+	{
 		return 0;
+	}
 
 #if defined(CONFIG_RTL_QOS_PATCH)
 	if(((struct sk_buff *)tx_skb)->srcPhyPort == QOS_PATCH_RX_FROM_LOCAL){
@@ -4199,7 +4247,7 @@ static int re865x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	_dma_cache_wback_inv((unsigned long) tx_skb->data, tx_skb->len);
 	tx_retry_cnt = 0;
 	while(swNic_send((void *)tx_skb, tx_skb->data, tx_skb->len, &nicTx) < 0)
-	{
+	{		
 		swNic_txDone(nicTx.txIdx);
 		if ((tx_retry_cnt++)>RTL_NIC_TX_RETRY_MAX) {
 			dev_kfree_skb_any(tx_skb);
@@ -6745,6 +6793,31 @@ int32 rtl865x_changeOpMode(int mode)
 	return SUCCESS;
 }
 
+
+int  rtl865x_reChangeOpMode (void)
+{
+	unsigned long flags;
+	local_irq_save(flags);
+	if(rtl865x_curOpMode==GATEWAY_MODE)
+	{
+		rtl865x_changeOpMode(BRIDGE_MODE);
+		rtl865x_changeOpMode(GATEWAY_MODE);
+	}
+	else if (rtl865x_curOpMode==BRIDGE_MODE)
+	{
+		rtl865x_changeOpMode(GATEWAY_MODE);
+		rtl865x_changeOpMode(BRIDGE_MODE);
+	}
+	else if (rtl865x_curOpMode==WISP_MODE)
+	{
+		rtl865x_changeOpMode(GATEWAY_MODE);
+		rtl865x_changeOpMode(WISP_MODE);
+	}
+	local_irq_restore(flags);
+	return 0;
+}
+
+
 static int32 reinit_vlan_configure(struct rtl865x_vlanConfig new_vlanconfig[])
 {
 	uint16 pvid;
@@ -7081,10 +7154,14 @@ static int32 rtl_phy_status_write( struct file *filp, const char *buff,unsigned 
 				type = HALF_DUPLEX_10M;
 			else if(strcmp(tokptr,"100_half") == 0)
 				type = HALF_DUPLEX_100M;
+			else if(strcmp(tokptr,"1000_half") == 0)
+				type = HALF_DUPLEX_1000M;
 			else if(strcmp(tokptr,"10_full") == 0)
 				type = DUPLEX_10M;
 			else if(strcmp(tokptr,"100_full") == 0)
 				type = DUPLEX_100M;
+			else if(strcmp(tokptr,"1000_full") == 0)
+				type = DUPLEX_1000M;
 			else
 				type = PORT_AUTO;
 
@@ -7114,6 +7191,15 @@ static int32 rtl_phy_status_write( struct file *filp, const char *buff,unsigned 
 					advCapability=(1<<HALF_DUPLEX_100M);
 					break;
 				}
+				case HALF_DUPLEX_1000M:
+				{
+					forceMode=TRUE;
+					forceLink=TRUE;
+					forceLinkSpeed=SPEED1000M;
+					forceDuplex=FALSE;
+					advCapability=(1<<HALF_DUPLEX_1000M);
+					break;
+				}
 				case DUPLEX_10M:
 				{
 					forceMode=TRUE;
@@ -7130,6 +7216,15 @@ static int32 rtl_phy_status_write( struct file *filp, const char *buff,unsigned 
 					forceLinkSpeed=SPEED100M;
 					forceDuplex=TRUE;
 					advCapability=(1<<DUPLEX_100M);
+					break;
+				}
+				case DUPLEX_1000M:
+				{
+					forceMode=TRUE;
+					forceLink=TRUE;
+					forceLinkSpeed=SPEED1000M;
+					forceDuplex=TRUE;
+					advCapability=(1<<DUPLEX_1000M);
 					break;
 				}
 				default:
@@ -8639,29 +8734,6 @@ int  re865x_reProbe (void)
 	rtl8651_setAsicMulticastEnable(FALSE);
 #endif
 #endif
-	local_irq_restore(flags);
-	return 0;
-}
-
-int  rtl865x_reChangeOpMode (void)
-{
-	unsigned long flags;
-	local_irq_save(flags);
-	if(rtl865x_curOpMode==GATEWAY_MODE)
-	{
-		rtl865x_changeOpMode(BRIDGE_MODE);
-		rtl865x_changeOpMode(GATEWAY_MODE);
-	}
-	else if (rtl865x_curOpMode==BRIDGE_MODE)
-	{
-		rtl865x_changeOpMode(GATEWAY_MODE);
-		rtl865x_changeOpMode(BRIDGE_MODE);
-	}
-	else if (rtl865x_curOpMode==WISP_MODE)
-	{
-		rtl865x_changeOpMode(GATEWAY_MODE);
-		rtl865x_changeOpMode(WISP_MODE);
-	}
 	local_irq_restore(flags);
 	return 0;
 }

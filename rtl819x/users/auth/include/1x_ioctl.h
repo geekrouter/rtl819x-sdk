@@ -180,6 +180,11 @@ typedef enum{
 	DOT11_EVENT_WSC_PROBE_REQ_IND = 56,
 	DOT11_EVENT_WSC_PIN_IND = 57,
 	DOT11_EVENT_WSC_ASSOC_REQ_IE_IND = 58,
+	/* WPS2DOTX ; support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */		
+	DOT11_EVENT_WSC_SET_MY_PIN = 102,
+	DOT11_EVENT_WSC_SPEC_SSID = 103,
+	DOT11_EVENT_WSC_SPEC_MAC_IND = 104,	
+	/* WPS2DOTX ;support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */		
 #ifdef CONFIG_IWPRIV_INTF
 	DOT11_EVENT_WSC_START_IND = 70,
 	//EV_MODE, EV_STATUS, EV_MEHOD, EV_STEP, EV_OOB
@@ -190,8 +195,8 @@ typedef enum{
 	DOT11_EVENT_WSC_OOB_IND = 75,
 #endif  //ifdef CONFIG_IWPRIV_INTF
 #endif
-
-        DOT11_EVENT_MAX = 59,
+     /*WPS2DOTX*/
+    DOT11_EVENT_MAX = 200,
 } DOT11_EVENT;
 
 

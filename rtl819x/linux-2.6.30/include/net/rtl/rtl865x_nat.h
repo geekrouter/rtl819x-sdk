@@ -4,8 +4,11 @@
 #define FLAG_QOS_ENABLE 1
 
 /* NAT timeout value */
-#define TCP_TIMEOUT						60	 	/* 60 secs */
-#define UDP_TIMEOUT					30		/* 30 secs */
+#define TCP_TIMEOUT					120	 	/* 120 secs */
+#define UDP_TIMEOUT					90		/* 90 secs */
+#define TCP_OVERRIDE_ELASPED_THRESHOLD	60	 	/* 60 secs */
+#define UDP_OVERRIDE_ELASPED_THRESHOLD	30		/* 30 secs */
+
 #define TCP_CLOSED_FLOW				8
 
 #define RTL865X_PROTOCOL_UDP		0
@@ -19,9 +22,10 @@
 #define NAT_PRE_RESERVED		0x00000100
 #define RESERVE_EXPIRE_TIME	3	/*uinit:seconds*/
 
-#define NAT_INUSE(n)				( ((n)->flags&(NAT_INBOUND|NAT_OUTBOUND)) )
-#define SET_NAT_FLAGS(n, v)		(n)->flags |= v
-#define CLR_NAT_FLAGS(n, v)		((n)->flags &= (~v))
+#define NAT_INUSE(_n_)				( ((_n_)->flags&(NAT_INBOUND|NAT_OUTBOUND)) )
+#define SET_NAT_FLAGS(_n_, _v_)		((_n_)->flags |= (_v_))
+#define CLR_NAT_FLAGS(_n_, _v_)		((_n_)->flags &= (~(_v_)))
+#define	NAT_INVALID(_n_)			( ((_n_)->flags=0) )
 
 #define MAX_EXTPORT_TRY_CNT 8
 
@@ -109,7 +113,10 @@ int rtl865x_getAsicNaptHashScore(rtl865x_napt_entry *naptEntry,
 int32 rtl865x_preReserveConn(rtl865x_napt_entry *naptEntry);
 
 #endif
+#if defined(CONFIG_RTL_HARDWARE_NAT)
+int32 rtl_nat_expire_interval_update(int proto, int32 interval);
 int32 rtl865x_nat_reinit(void);
+#endif
 
 #endif
 

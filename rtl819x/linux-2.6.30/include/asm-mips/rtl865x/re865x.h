@@ -404,6 +404,7 @@
  *
  */
 
+
 #ifndef _LINUX_IF_RE865X_H
 #define _LINUX_IF_RE865X_H
 

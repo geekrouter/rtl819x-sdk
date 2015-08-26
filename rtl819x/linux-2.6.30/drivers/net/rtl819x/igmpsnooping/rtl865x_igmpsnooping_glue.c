@@ -26,7 +26,6 @@
 
 
 
-
 #include <net/rtl/rtl_types.h>
 #include <net/rtl/rtl_glue.h>
 #include <net/rtl/rtl865x_igmpsnooping_glue.h>

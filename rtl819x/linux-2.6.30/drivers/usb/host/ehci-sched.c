@@ -608,7 +608,8 @@ static void intr_deschedule (struct ehci_hcd *ehci, struct ehci_qh *qh)
 					& qh->hw_info2) != 0)
 		wait = 2;
 	else
-		wait = 55;	/* worst case: 3 * 1024 */
+		//wait = 55;	/* worst case: 3 * 1024 */
+		wait = 3 * 1024;
 
 	udelay (wait);
 	qh->qh_state = QH_STATE_IDLE;

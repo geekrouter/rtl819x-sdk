@@ -709,7 +709,7 @@ static int resetDefault()
 int main(int argc, char** argv)
 {
 	int argNum=1, action=0, idx, num, valNum=0;
-	char mib[100]={0}, valueArray[170][100], *value[170], *ptr;
+	char mib[100]={0}, valueArray[199][100], *value[199], *ptr;
 #ifdef PARSE_TXT_FILE
 	char filename[100]={0};
 	APMIB_T apmib;
@@ -8538,9 +8538,18 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 	int wlan_chan_num=0, wsc_config_by_ext_reg=0;
 	int is_vxdif=0;
 
-	// 1104	
+
+	// WPS2DOTX
+	int wlan0_wlan_disabled=0;	
+	int wlan1_wlan_disabled=0;		
+
 	int wlan0_wsc_disabled=0;	
 	int wlan1_wsc_disabled=0;		
+	
+	int wlan0_hidden_ssid=0;
+	int wlan1_hidden_ssid=0;
+	// WPS2DOTX
+	
 	int band_select_5g2g;  // 0:2.4g  ; 1:5G   ; 2:both
 	
 	//printf("\r\n wlanif_name=[%s],__[%s-%u]\r\n",wlanif_name,__FILE__,__LINE__);	
@@ -8598,7 +8607,30 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 	apmib_get(MIB_WLAN_WEP128_KEY4, (void *)&wlan_wep128_key4);
 	apmib_get(MIB_WLAN_WPA_PSK, (void *)&wlan_wpa_psk);
 	apmib_get(MIB_WLAN_WSC_DISABLE, (void *)&wlan0_wsc_disabled);	// 1104
+	apmib_get(MIB_WLAN_WLAN_DISABLED, (void *)&wlan0_wlan_disabled);	// 0908	
 	
+	/* WPS2DOTX ; 2011-0524*/ 	
+	if(wlan0_wlan_disabled)
+		wlan0_wsc_disabled=1 ; // if wlan0 interface is disabled ; 
+		
+	if(is_client == AP_MODE || is_client ==AP_WDS_MODE){
+		apmib_get(MIB_WLAN_HIDDEN_SSID, (void *)&wlan0_hidden_ssid);		
+		if(wlan0_hidden_ssid)
+			wlan0_wsc_disabled=1 ; // if hidden ssid is enabled ; disabled WPS2
+
+		if(wsc_auth==WSC_AUTH_WPAPSK){
+			//printf("(%s %d)if WPA only ; disabled WPS2\n\n",__FUNCTION__,__LINE__);				
+			wlan0_wsc_disabled=1 ; 
+		}
+
+		if( wsc_enc==WSC_ENCRYPT_WEP || wsc_enc==WSC_ENCRYPT_TKIP){
+			//printf("(%s %d)if WEP/TKIP only ; disabled WPS2\n\n",__FUNCTION__,__LINE__);				
+			wlan0_wsc_disabled=1 ; 
+		}
+	}
+
+	/* WPS2DOTX ; 2011-0524*/ 	
+
 		
 	if (genpin || !memcmp(wsc_pin, "\x0\x0\x0\x0\x0\x0\x0\x0", PIN_LEN)) {
 		#include <sys/time.h>			
@@ -8616,9 +8648,9 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 
 		apmib_set(MIB_HW_WSC_PIN, (void *)wsc_pin);
 #ifdef FOR_DUAL_BAND           // 2010-10-20
-               wlan_idx=1;
-               apmib_set(MIB_HW_WSC_PIN, (void *)wsc_pin);
-               wlan_idx=0;
+        wlan_idx=1;
+        apmib_set(MIB_HW_WSC_PIN, (void *)wsc_pin);
+        wlan_idx=0;
 #endif		
 		//apmib_update(CURRENT_SETTING);		
 		apmib_update(HW_SETTING);		
@@ -8819,7 +8851,7 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 	apmib_get(MIB_WLAN_WSC_AUTH, (void *)&wsc_auth);
 	apmib_get(MIB_WLAN_WSC_ENC, (void *)&wsc_enc);
 	apmib_get(MIB_WLAN_SSID, (void *)&wlan_ssid);	
-
+	apmib_get(MIB_WLAN_MODE, (void *)&is_client);	
 	apmib_get(MIB_WLAN_ENCRYPT, (void *)&wlan_encrpty);
 	apmib_get(MIB_WLAN_WEP, (void *)&wlan_wep);
 	apmib_get(MIB_WLAN_WEP_KEY_TYPE, (void *)&wep_key_type);
@@ -8834,6 +8866,30 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 	apmib_get(MIB_WLAN_WEP128_KEY4, (void *)&wlan_wep128_key4);
 	apmib_get(MIB_WLAN_WPA_PSK, (void *)&wlan_wpa_psk);
 	apmib_get(MIB_WLAN_WSC_DISABLE, (void *)&wlan1_wsc_disabled);	// 1104
+	apmib_get(MIB_WLAN_WLAN_DISABLED, (void *)&wlan1_wlan_disabled);	// 0908	
+	
+	/* WPS2DOTX ; 2011-0524*/ 	
+	if(wlan1_wlan_disabled)
+		wlan1_wsc_disabled = 1 ; // if wlan1 interface is disabled
+			
+	if(is_client == AP_MODE || is_client ==AP_WDS_MODE){
+
+		apmib_get(MIB_WLAN_HIDDEN_SSID, (void *)&wlan1_hidden_ssid);
+		if(wlan1_hidden_ssid)
+			wlan1_wsc_disabled = 1 ; // if hidden ssid is enabled ; disabled WPS2
+
+		if(wsc_auth==WSC_AUTH_WPAPSK){
+			//printf("(%s %d)if WPA only ; disabled WPS2\n\n",__FUNCTION__,__LINE__);				
+			wlan1_wsc_disabled=1 ; 
+		}
+
+		if( wsc_enc==WSC_ENCRYPT_WEP || wsc_enc==WSC_ENCRYPT_TKIP){
+			//printf("(%s %d)if WEP/TKIP only ; disabled WPS2\n\n",__FUNCTION__,__LINE__);				
+			wlan1_wsc_disabled=1 ; 
+		}
+	}
+
+	/* WPS2DOTX ; 2011-0524*/ 	
 	
 	WRITE_WSC_PARAM(ptr, tmpbuf, "#=====wlan1 start==========%d\n",intVal);
 	WRITE_WSC_PARAM(ptr, tmpbuf, "ssid2 = \"%s\"\n",wlan_ssid );	
@@ -8851,6 +8907,8 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 		WRITE_WSC_PARAM(ptr, tmpbuf, "wlan1_wsc_disabled = %d\n", wlan1_wsc_disabled);		
 	}
 
+	is_wep = 0;
+	
 	if (wsc_enc == WSC_ENCRYPT_WEP)
 		is_wep = 1;
 
@@ -9008,6 +9066,7 @@ static int updateWscConf(char *in, char *out, int genpin, char *wlanif_name)
 #else //#if defined(UNIVERSAL_REPEATER) && defined(CONFIG_REPEATER_WPS_SUPPORT)
 static int updateWscConf(char *in, char *out, int genpin)
 {
+
 	int fh;
 	struct stat status;
 	char *buf, *ptr;

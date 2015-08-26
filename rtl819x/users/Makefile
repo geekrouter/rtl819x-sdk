@@ -105,6 +105,7 @@ export CFLAGS
 # application
 app_$(CONFIG_APP_BUSYBOX)		+= busybox
 app_$(CONFIG_APP_GOAHEAD)		+= goahead-2.1.1
+app_$(CONFIG_APP_BOA)			+= boa
 ifeq ($(CINIT), 1)
 app_$(CONFIG_APP_SCRIPT)		+= script/cinit
 else
@@ -122,7 +123,8 @@ app_$(CONFIG_APP_DOSFSCK)		+= dosfstools-2.11/dosfsck
 app_$(CONFIG_APP_MKDOSFS)		+= dosfstools-2.11/mkdosfs
 app_$(CONFIG_APP_NTFS3G)		+= ntfs-3g-2010.10.2
 app_$(CONFIG_APP_MP)			+= mp-daemon
-app_$(CONFIG_APP_SAMBA)			+= samba-3.0.24/source
+app_$(CONFIG_APP_SAMBA)                 += samba-3.0.37/source
+
 app_$(CONFIG_APP_IGMPPROXY)		+= igmpproxy
 app_$(CONFIG_APP_WIRELESSTOOLS)		+= $(WLTOOLS)
 app_$(CONFIG_APP_DNRD)			+= dnrd-2.12.1/src
@@ -272,11 +274,21 @@ endif
 
 ifeq ($(CONFIG_HTTP_FILE_SERVER_SUPPORT), y)
 ifeq ($(CONFIG_RTL_8198), y)
+ifeq ($(CONFIG_APP_GOAHEAD),y)	
 	cp goahead-2.1.1/http_files_5281 goahead-2.1.1/http_files.o
 	cp goahead-2.1.1/LINUX/fmhttp_files_gw_5281 goahead-2.1.1/LINUX/fmhttp_files_gw.o
 else
+	cp boa/src/http_files_5281 boa/src/http_files.o
+	cp boa/src/fmhttp_files_5281 boa/src/fmhttp_files.o
+endif
+else
+ifeq ($(CONFIG_APP_GOAHEAD),y)
 	cp goahead-2.1.1/http_files_4181 goahead-2.1.1/http_files.o
 	cp goahead-2.1.1/LINUX/fmhttp_files_gw_4181 goahead-2.1.1/LINUX/fmhttp_files_gw.o
+else
+        cp boa/src/http_files_4181 boa/src/http_files.o
+        cp boa/src/fmhttp_files_4181 boa/src/fmhttp_files.o
+endif
 endif
 endif
 

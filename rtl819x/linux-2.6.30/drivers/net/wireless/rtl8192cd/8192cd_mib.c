@@ -20,6 +20,10 @@
 #include "./8192cd_debug.h"
 #include "./8192cd_mib.h"
 
+#ifdef TXPWR_LMT
+extern int _convert_2_pwr_dot(char *s, int base);
+#endif
+
 extern int _atoi(char *s, int base);
 
 struct mib_val dot11_mib_table[]={

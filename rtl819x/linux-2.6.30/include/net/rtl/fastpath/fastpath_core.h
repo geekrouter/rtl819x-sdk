@@ -463,6 +463,11 @@ int arp_req_get_ha(__be32 queryIP, struct net_device *dev, unsigned char * resHw
 #if	defined(CONFIG_RTL_HW_QOS_SUPPORT)
 int32 rtl_qosGetSkbMarkByNaptEntry(rtl865x_napt_entry *naptEntry, rtl865x_qos_mark *qosMark, struct sk_buff *pskb);
 #endif
+int fast_path_before_nat_check(struct sk_buff *skb, struct iphdr *iph, uint32 iphProtocol);
+
+#if defined(CONFIG_PROC_FS)
+int fastpath_dump_napt_entry_num(char *page, int len);
+#endif
 
 /* [MARCO FUNCTION] ========================================================================= */
 #define	MAC2STR(addr) \

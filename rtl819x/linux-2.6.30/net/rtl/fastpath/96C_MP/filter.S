@@ -1291,6 +1291,25 @@ $L259:
 	.set	macro
 	.set	reorder
 	.end	filter_table_regist
+	.section	.text.Del_Pattern_ACL_For_ContentFilter,"ax",@progbits
+	.align	2
+	.globl	Del_Pattern_ACL_For_ContentFilter
+	.ent	Del_Pattern_ACL_For_ContentFilter
+	.type	Del_Pattern_ACL_For_ContentFilter, @function
+Del_Pattern_ACL_For_ContentFilter:
+	.set	nomips16
+	.frame	$sp,0,$31		# vars= 0, regs= 0/0, args= 0, gp= 0
+	.mask	0x00000000,0
+	.fmask	0x00000000,0
+	.set	noreorder
+	.set	nomacro
+	
+	j	$31
+	move	$2,$0
+
+	.set	macro
+	.set	reorder
+	.end	Del_Pattern_ACL_For_ContentFilter
 	.section	.text.filter_table_flush,"ax",@progbits
 	.align	2
 	.globl	filter_table_flush

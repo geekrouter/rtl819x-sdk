@@ -98,6 +98,17 @@ bool nf_nat_proto_unique_tuple(struct nf_conntrack_tuple *tuple,
 		off = *rover;
 	
 #if defined (CONFIG_RTL_HARDWARE_NAT) && defined (CONFIG_RTL_INBOUND_COLLISION_AVOIDANCE) 
+if(ct->master || (ct->status & IPS_EXPECTED)){
+	for (i = 0; i < range_size; i++, off++) {
+		*portptr = htons(min + off % range_size);
+		if (nf_nat_used_tuple(tuple, ct))
+			continue;
+		if (!(range->flags & IP_NAT_RANGE_PROTO_RANDOM))
+			*rover = off;
+		return true;
+	}
+}else
+{	
 	for (i = 0; i < range_size; i++) {
 		if(gHwNatEnabled) 
 		{
@@ -176,7 +187,7 @@ bool nf_nat_proto_unique_tuple(struct nf_conntrack_tuple *tuple,
 			*rover = off;
 		return true;
 	}
-	
+}	
 #else
 	for (i = 0; i < range_size; i++, off++) {
 		*portptr = htons(min + off % range_size);

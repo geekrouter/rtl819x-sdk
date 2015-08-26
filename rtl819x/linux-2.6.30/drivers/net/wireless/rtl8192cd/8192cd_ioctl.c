@@ -56,6 +56,10 @@
 #define HAPD_IOCTL_SETCONFIG	SIOCIWLASTPRIV //0x8BFF
 #endif
 
+#if defined(CLIENT_MODE) && !defined(WIFI_WPAS)
+static int check_bss_encrypt(struct rtl8192cd_priv *priv);
+#endif
+
 #ifdef WIFI_WPAS
 #define WPAS_IOCTL_CUSTOM		SIOCIWLASTPRIV //0x8BFF
 #endif
@@ -226,8 +230,7 @@ int g_port_mapping=FALSE;
 #define RTL8192CD_IOCTL_ADD_ACL_TABLE		0x8B96
 #define RTL8192CD_IOCTL_REMOVE_ACL_TABLE	0x8B97
 #define RTL8192CD_IOCTL_GET_ACL_TABLE		0x8B98
-#define ACL_allow 1
-#define ACL_deny 2
+
 #endif//tsananiu//
 
 #define SIOCQPATHTABLE  0x8BA0  // query pathselection table
@@ -290,6 +293,11 @@ typedef enum {BYTE_T, INT_T, SSID_STRING_T, BYTE_ARRAY_T, ACL_T, IDX_BYTE_ARRAY_
 	DEF_SSID_STRING_T, STRING_T, RFFT_T, VARLEN_BYTE_T,
 #ifdef WIFI_SIMPLE_CONFIG
 	PIN_IND_T,
+	/* WPS2DOTX   */
+	WSC_SELF_PIN_IND_T,
+	WSC_SEPC_SSID_CONN_IND_T,	
+	WSC_SEPC_MAC_CONN_IND_T,	
+	/* WPS2DOTX   */
 #ifdef INCLUDE_WPS
 #ifndef CONFIG_MSC
 	WSC_IND_T,
@@ -975,6 +983,12 @@ static struct iwpriv_arg mib_table[] = {
 	// struct WifiSimpleConfigEntry
 	{"wsc_enable",	INT_T,	_OFFSET(wscEntry.wsc_enable), _SIZE(wscEntry.wsc_enable), 0},
 	{"pin",			PIN_IND_T, 0, 0},
+	/* WPS2DOTX   */
+	/* support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */	
+	{"wsc_mypin",	WSC_SELF_PIN_IND_T, 0, 0},
+	{"wsc_specssid",WSC_SEPC_SSID_CONN_IND_T, 0, 0},	
+	{"wsc_specmac",	WSC_SEPC_MAC_CONN_IND_T, 0, 0},	
+	/* WPS2DOTX   */
 #ifdef INCLUDE_WPS
 #ifndef CONFIG_MSC
 	{"wsc_start2",   WSC_IND_T, 0, 0},
@@ -1130,8 +1144,8 @@ static struct iwpriv_arg mib_table[] = {
 
 #ifdef HIGH_POWER_EXT_PA
 	{"use_ext_pa",		RFFT_T,	_OFFSET_RFFT(use_ext_pa), _SIZE_RFFT(use_ext_pa), 1},
-	{"hp_ofdm_max",		RFFT_T,	_OFFSET_RFFT(hp_ofdm_pwr_max), _SIZE_RFFT(hp_ofdm_pwr_max), 44},
-	{"hp_cck_max",		RFFT_T,	_OFFSET_RFFT(hp_cck_pwr_max), _SIZE_RFFT(hp_cck_pwr_max), 30},
+	{"hp_ofdm_max",		RFFT_T,	_OFFSET_RFFT(hp_ofdm_pwr_max), _SIZE_RFFT(hp_ofdm_pwr_max), 63},
+	{"hp_cck_max",		RFFT_T,	_OFFSET_RFFT(hp_cck_pwr_max), _SIZE_RFFT(hp_cck_pwr_max), 63},
 #endif
 
 #if defined(CONFIG_RTL_NOISE_CONTROL) || defined(CONFIG_RTL_NOISE_CONTROL_92C)
@@ -1234,6 +1248,13 @@ static struct iwpriv_arg mib_table[] = {
 	{"use_intpa92d",		RFFT_T,	_OFFSET_RFFT(use_intpa92d), _SIZE_RFFT(use_intpa92d), 0},
 #endif
 	{"pwr_by_rate",        RFFT_T, _OFFSET_RFFT(pwr_by_rate), _SIZE_RFFT(pwr_by_rate), 0},
+#ifdef TXPWR_LMT
+	{"disable_txpwrlmt",	RFFT_T, _OFFSET_RFFT(disable_txpwrlmt), _SIZE_RFFT(disable_txpwrlmt), 1},
+#endif
+
+#ifdef CONFIG_RTL_92D_DMDP
+	{"peerReinit",	RFFT_T, _OFFSET_RFFT(peerReinit), _SIZE_RFFT(peerReinit), 0},
+#endif
 };
 
 #ifdef _DEBUG_RTL8192CD_
@@ -1265,6 +1286,38 @@ void MDL_DEVINIT set_mib_default_tbl(struct rtl8192cd_priv *priv)
 		}
 	}
 }
+
+
+#ifdef TXPWR_LMT
+
+int _convert_2_pwr_dot(char *s, int base)
+{
+	int k = 0;
+
+	k = 0;
+	if (base == 10) {
+		while (*s >= '0' && *s <= '9') {
+			k = 10 * k + (*s - '0');
+			s++;
+		}
+
+		k = k*2;
+
+		if(*s == '.'){
+			s++;
+			
+			if(*s >= '5' && *s <= '9')
+				k++;				
+		}
+	}
+	else
+		return 0;
+
+	return k;
+}
+
+
+#endif
 
 
 int _atoi(char *s, int base)
@@ -1423,26 +1476,54 @@ int set_mib(struct rtl8192cd_priv *priv, unsigned char *data)
 				}
 				break;
 			}
-#ifdef CLIENT_MODE
-			if ((priv->pmib->wscEntry.wsc_enable == 1) && (int_val == 0)) { // for client mode
+#ifdef CLIENT_MODE	/* WPS2DOTX   */
+			if ((priv->pmib->wscEntry.wsc_enable == 1) && (int_val == 0)) { 
+				/*handle for WPS client mode fail or timeout*/ 
+
 				if (priv->recover_join_req) {
 					priv->recover_join_req = 0;
 					priv->pmib->wscEntry.wsc_enable = 0;
+
 					memcpy(&priv->pmib->dot11Bss, &priv->dot11Bss_original, sizeof(struct bss_desc));
-					memcpy(SSID2SCAN, priv->pmib->dot11Bss.ssid, priv->pmib->dot11Bss.ssidlen);
-					SSID2SCAN_LEN = priv->pmib->dot11Bss.ssidlen;
-					SSID_LEN = SSID2SCAN_LEN;
-					memcpy(SSID, SSID2SCAN, SSID_LEN);
-					memset(BSSID, 0, MACADDRLEN);
-					priv->join_req_ongoing = 1;
-					priv->authModeRetry = 0;
-					start_clnt_join(priv);
+
+					SSID_LEN = priv->orig_SSID_LEN ;	
+					memset(SSID,'\0',sizeof(SSID));					
+					memcpy(SSID , priv->orig_SSID , SSID_LEN);
+
+					SSID2SCAN_LEN = priv->orig_SSID_LEN;
+					memset(SSID2SCAN,'\0',sizeof(SSID2SCAN));
+					memcpy(SSID2SCAN ,priv->orig_SSID , SSID2SCAN_LEN);															
+					//memset(BSSID, 0, MACADDRLEN);
+					rtl8192cd_close(priv->dev);
+					rtl8192cd_open(priv->dev);
 					break;
 				}
 			}
-			else if ((priv->pmib->wscEntry.wsc_enable == 0) && (int_val == 1))
-				memcpy(&priv->dot11Bss_original, &priv->pmib->dot11Bss, sizeof(struct bss_desc));
+			else if ((priv->pmib->wscEntry.wsc_enable == 6) && (int_val == 0)) {
+				/*handle for WPS client mode success;(don't do wlan driver close open)*/ 			
 
+				priv->pmib->wscEntry.wsc_enable = 0;
+				
+			}
+			else if ((priv->pmib->wscEntry.wsc_enable == 0) && (int_val == 1)){
+				/*before start of client WPS backup some info for later restroe*/ 
+
+				memcpy(&priv->dot11Bss_original, &priv->pmib->dot11Bss, sizeof(struct bss_desc));
+				memset(priv->orig_SSID,'\0',sizeof(priv->orig_SSID));				
+				memcpy(priv->orig_SSID , SSID , SSID_LEN);
+				priv->orig_SSID_LEN = SSID_LEN;	
+ 				/*fixed for IOT issue */
+				if((OPMODE&(WIFI_STATION_STATE | WIFI_AUTH_SUCCESS | WIFI_ASOC_STATE))
+						==(WIFI_STATION_STATE | WIFI_AUTH_SUCCESS | WIFI_ASOC_STATE))
+				{
+					issue_disassoc(priv, BSSID, _RSON_DEAUTH_STA_LEAVING_);					
+					OPMODE &= ~(WIFI_AUTH_SUCCESS | WIFI_ASOC_STATE);					
+				} 
+ 
+
+				
+			}
+/* WPS2DOTX   */
 #endif
 		}
 #endif
@@ -1638,6 +1719,41 @@ int set_mib(struct rtl8192cd_priv *priv, unsigned char *data)
 #endif
 		}
 		break;
+/* WPS2DOTX   */
+	/* support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */	
+	case WSC_SELF_PIN_IND_T:
+		if (strlen(arg_val) > entry->len) {
+			DOT11_WSC_PIN_IND wsc_ind;
+			wsc_ind.EventId = DOT11_EVENT_WSC_SET_MY_PIN;
+			wsc_ind.IsMoreEvent = 0;
+			strcpy(wsc_ind.code, arg_val);
+			DOT11_EnQueue((unsigned long)priv, priv->pevent_queue, (unsigned char*)&wsc_ind, sizeof(DOT11_WSC_PIN_IND));
+			event_indicate(priv, NULL, -1);
+		}
+		break;
+	case WSC_SEPC_SSID_CONN_IND_T:
+		if (strlen(arg_val) > entry->len) {
+			DOT11_WSC_PIN_IND wsc_ind;
+
+			wsc_ind.EventId = DOT11_EVENT_WSC_SPEC_SSID;
+			wsc_ind.IsMoreEvent = 0;
+			strcpy(wsc_ind.code, arg_val);
+			DOT11_EnQueue((unsigned long)priv, priv->pevent_queue, (unsigned char*)&wsc_ind, sizeof(DOT11_WSC_PIN_IND));
+			event_indicate(priv, NULL, -1);
+		}
+		break;
+	case WSC_SEPC_MAC_CONN_IND_T:
+		if (strlen(arg_val) == 12) {
+			DOT11_WSC_PIN_IND wsc_ind;
+			wsc_ind.EventId = DOT11_EVENT_WSC_SPEC_MAC_IND;
+			wsc_ind.IsMoreEvent = 0;
+			strcpy(wsc_ind.code, arg_val);
+			DOT11_EnQueue((unsigned long)priv, priv->pevent_queue, (unsigned char*)&wsc_ind, sizeof(DOT11_WSC_PIN_IND));
+			event_indicate(priv, NULL, -1);
+		}
+		break;
+	/* support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */			
+/* WPS2DOTX   */	
 #ifdef INCLUDE_WPS
 #ifndef CONFIG_MSC
 	case WSC_IND_T:
@@ -2437,10 +2553,1184 @@ int set_guestmacinvalid(struct rtl8192cd_priv *priv, char *buf)
 #define	panic_printk	printk
 #endif
 #endif
+
+//_TXPWR_REDEFINE
+
+#define POWER_MIN_CHECK(a,b)            (((a) > (b)) ? (b) : (a))
+#define POWER_RANGE_CHECK(val)		(((val) > 0x3f)? 0x3f : ((val < 0) ? 0 : val))
+#define COUNT_SIGN_OFFSET(val, oft)	(((oft & 0x08) == 0x08)? (val - (0x10 - oft)) : (val + oft))
+
+#define ASSIGN_TX_POWER_OFFSET(offset, setting) { \
+	if (setting != 0x7f) \
+		offset = setting; \
+}
+
+
+static int ch2idx(int ch)
+{
+	int val=-1;
+	// |1~14|36, 38, 40, ..., 64|100, 102, ..., 140|149, 151, ..., 165|
+	if (ch<=14)
+		val = ch-1;
+	else if (ch<=64)
+		val = ((ch-36)>>1)+14;
+	else if (ch<=140)
+		val = ((ch-100)>>1)+29;
+	else if (ch<=165)
+		val = ((ch-149)>>1)+50;
+
+	return val;
+}
+
+static void dump_cck(struct rtl8192cd_priv *priv, 
+	unsigned char pwrlevelCCK_A, unsigned char pwrlevelCCK_B, 
+	char *CCKTxAgc_A, char *CCKTxAgc_B
+	)
+{
+	char byte, byte1, byte2, byte3;
+
+	if (priv->pshare->rf_ft_var.cck_pwr_max) 
+	{
+		 printk("Use cck_pwr_max = %d\n", priv->pshare->rf_ft_var.cck_pwr_max);
+		 
+		 byte = POWER_RANGE_CHECK(priv->pshare->rf_ft_var.cck_pwr_max);	 
+		 printk("A_CCK1_Mcs32(0xe08): 0x----%02x--\n", byte);
+		 printk("B_CCK5_1_Mcs32(0x838): 0x%02x%02x%02x--\n", byte, byte, byte);
+		 printk("A_CCK11_2_B_CCK11(0x86c): 0x%02x%02x%02x%02x\n", byte, byte, byte, byte);
+		 
+		 return;
+	}
+
+	if (pwrlevelCCK_A == 0) {	// use default value
+#ifdef HIGH_POWER_EXT_PA
+		if (priv->pshare->rf_ft_var.use_ext_pa)
+			byte = HP_CCK_POWER_DEFAULT;
+		else
+#endif
+			byte = 0x24;
+
+		printk("Use default cck value = %d\n", byte);
+
+		pwrlevelCCK_A = pwrlevelCCK_B = byte;
+		byte = 0;
+		ASSIGN_TX_POWER_OFFSET(byte, priv->pshare->rf_ft_var.txPowerPlus_cck_1);
+		byte = POWER_RANGE_CHECK(pwrlevelCCK_A + byte);
+		printk("A_CCK1_Mcs32(0xe08): 0x----%02x--\n", byte);
+		
+		byte = byte1 = byte2 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte, priv->pshare->rf_ft_var.txPowerPlus_cck_1);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_cck_2);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_cck_5);
+		byte  = POWER_RANGE_CHECK(pwrlevelCCK_B + byte);
+		byte1 = POWER_RANGE_CHECK(pwrlevelCCK_B + byte1);
+		byte2 = POWER_RANGE_CHECK(pwrlevelCCK_B + byte2);
+		printk("B_CCK5_1_Mcs32(0x838): 0x%02x%02x%02x--\n", byte2, byte1, byte);
+
+		byte = byte1 = byte2 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte, priv->pshare->rf_ft_var.txPowerPlus_cck_2);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_cck_5);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_cck_11);
+		byte  = POWER_RANGE_CHECK(pwrlevelCCK_A + byte);
+		byte1 = POWER_RANGE_CHECK(pwrlevelCCK_A + byte1);
+		byte2 = POWER_RANGE_CHECK(pwrlevelCCK_A + byte2);
+		printk("A_CCK11_2_B_CCK11(0x86c): 0x%02x%02x%02x%02x\n", byte2, byte1, byte, byte2);
+		
+		return; // use default
+	}
+
+	byte = POWER_RANGE_CHECK(pwrlevelCCK_A + CCKTxAgc_A[3]);
+	printk("A_CCK1_Mcs32(0xe08): 0x----%02x--\n", byte);
+
+	byte = POWER_RANGE_CHECK(pwrlevelCCK_B + CCKTxAgc_B[1]); 
+	byte1 = POWER_RANGE_CHECK(pwrlevelCCK_B + CCKTxAgc_B[2]);
+	byte2 = POWER_RANGE_CHECK(pwrlevelCCK_B + CCKTxAgc_B[3]);
+	printk("B_CCK5_1_Mcs32(0x838): 0x%02x%02x%02x--\n", byte, byte1, byte2);
+	
+	byte = POWER_RANGE_CHECK(pwrlevelCCK_A + CCKTxAgc_A[0]);
+	byte1 = POWER_RANGE_CHECK(pwrlevelCCK_A + CCKTxAgc_A[1]);
+	byte2 = POWER_RANGE_CHECK(pwrlevelCCK_A + CCKTxAgc_A[2]);
+	byte3 = POWER_RANGE_CHECK(pwrlevelCCK_B + CCKTxAgc_B[0]);
+	printk("A_CCK11_2_B_CCK11(0x86c): 0x%02x%02x%02x%02x\n", byte, byte1, byte2, byte3);
+
+	return;
+
+}
+
+
+static void dump_ofdm_mcs0(struct rtl8192cd_priv *priv, int defValue, 
+	unsigned char pwrlevelHT40_1S_A, unsigned char pwrlevelHT40_1S_B, 
+	unsigned char pwrdiffHT40_2S, unsigned char pwrdiffHT20, unsigned char pwrdiffOFDM, 
+	unsigned char pwrlevelHT40_1S_A_6dB, unsigned char pwrlevelHT40_1S_B_6dB,
+	unsigned char pwrdiffHT40_2S_6dB, unsigned char pwrdiffHT20_6dB,
+	char *MCSTxAgcOffset_A, char *MCSTxAgcOffset_B, char *OFDMTxAgcOffset_A, char *OFDMTxAgcOffset_B,
+	int phyBandSelect
+	)
+{
+
+	char base, byte0, byte1, byte2, byte3;
+	unsigned char  offset;
+	
+#ifdef USB_POWER_SUPPORT
+	char base_6dBm;
+	unsigned char offset_6dBm;
+#endif
+	
+	if (pwrlevelHT40_1S_A == 0)
+	{
+		
+#ifdef HIGH_POWER_EXT_PA
+		if (priv->pshare->rf_ft_var.use_ext_pa)
+			defValue = HP_OFDM_POWER_DEFAULT ;
+#endif
+		printk("pwrlevelHT40_1S_A = 0, Use Default Value = %d\n", defValue);
+
+		base = defValue;
+		byte0 = byte1 = byte2 = byte3 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte0, priv->pshare->rf_ft_var.txPowerPlus_ofdm_18);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_ofdm_12);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_ofdm_9);
+		ASSIGN_TX_POWER_OFFSET(byte3, priv->pshare->rf_ft_var.txPowerPlus_ofdm_6);
+
+		byte0 = POWER_RANGE_CHECK(base + byte0);
+		byte1 = POWER_RANGE_CHECK(base + byte1);
+		byte2 = POWER_RANGE_CHECK(base + byte2);
+		byte3 = POWER_RANGE_CHECK(base + byte3);
+		
+		printk("A_Rate18_06(0xe00): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+		printk("B_Rate18_06(0x830): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);	
+
+		byte0 = byte1 = byte2 = byte3 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte0, priv->pshare->rf_ft_var.txPowerPlus_ofdm_54);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_ofdm_48);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_ofdm_36);
+		ASSIGN_TX_POWER_OFFSET(byte3, priv->pshare->rf_ft_var.txPowerPlus_ofdm_24);
+		byte0 = POWER_RANGE_CHECK(base + byte0);
+		byte1 = POWER_RANGE_CHECK(base + byte1);
+		byte2 = POWER_RANGE_CHECK(base + byte2);
+		byte3 = POWER_RANGE_CHECK(base + byte3);
+		printk("A_Rate54_24(0xe04): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3); 
+		printk("B_Rate54_24(0x834): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);	 
+
+
+		byte0 = byte1 = byte2 = byte3 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte0, priv->pshare->rf_ft_var.txPowerPlus_mcs_3);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_mcs_2);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_mcs_1);
+		ASSIGN_TX_POWER_OFFSET(byte3, priv->pshare->rf_ft_var.txPowerPlus_mcs_0);
+		byte0 = POWER_RANGE_CHECK(base + byte0);
+		byte1 = POWER_RANGE_CHECK(base + byte1);
+		byte2 = POWER_RANGE_CHECK(base + byte2);
+		byte3 = POWER_RANGE_CHECK(base + byte3);
+		printk("A_Mcs03_Mcs00(0xe10): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+		printk("B_Mcs03_Mcs00(0x83c): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+
+		byte0 = byte1 = byte2 = byte3 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte0, priv->pshare->rf_ft_var.txPowerPlus_mcs_7);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_mcs_6);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_mcs_5);
+		ASSIGN_TX_POWER_OFFSET(byte3, priv->pshare->rf_ft_var.txPowerPlus_mcs_4);
+		byte0 = POWER_RANGE_CHECK(base + byte0);
+		byte1 = POWER_RANGE_CHECK(base + byte1);
+		byte2 = POWER_RANGE_CHECK(base + byte2);
+		byte3 = POWER_RANGE_CHECK(base + byte3);
+		printk("A_Mcs07_Mcs04(0xe14): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+		printk("B_Mcs07_Mcs04(0x848): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+
+
+//_TXPWR_REDEFINE
+#ifdef USB_POWER_SUPPORT
+		byte0 = byte1 = byte2 = byte3 = -USB_HT_2S_DIFF;
+#else
+		byte0 = byte1 = byte2 = byte3 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte0, priv->pshare->rf_ft_var.txPowerPlus_mcs_11);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_mcs_10);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_mcs_9);
+		ASSIGN_TX_POWER_OFFSET(byte3, priv->pshare->rf_ft_var.txPowerPlus_mcs_8);
+#endif
+
+		byte0 = POWER_RANGE_CHECK(base + byte0);
+		byte1 = POWER_RANGE_CHECK(base + byte1);
+		byte2 = POWER_RANGE_CHECK(base + byte2);
+		byte3 = POWER_RANGE_CHECK(base + byte3);
+		printk("A_Mcs11_Mcs08(0xe18): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+		printk("B_Mcs11_Mcs08(0x84c): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+//_TXPWR_REDEFINE
+#ifdef USB_POWER_SUPPORT
+		byte0 = byte1 = byte2 = byte3 = -USB_HT_2S_DIFF;
+#else
+		byte0 = byte1 = byte2 = byte3 = 0;
+		ASSIGN_TX_POWER_OFFSET(byte0, priv->pshare->rf_ft_var.txPowerPlus_mcs_15);
+		ASSIGN_TX_POWER_OFFSET(byte1, priv->pshare->rf_ft_var.txPowerPlus_mcs_14);
+		ASSIGN_TX_POWER_OFFSET(byte2, priv->pshare->rf_ft_var.txPowerPlus_mcs_13);
+		ASSIGN_TX_POWER_OFFSET(byte3, priv->pshare->rf_ft_var.txPowerPlus_mcs_12);
+#endif
+
+		byte0 = POWER_RANGE_CHECK(base + byte0);
+		byte1 = POWER_RANGE_CHECK(base + byte1);
+		byte2 = POWER_RANGE_CHECK(base + byte2);
+		byte3 = POWER_RANGE_CHECK(base + byte3);
+		printk("A_Mcs15_Mcs12(0xe1c): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+		printk("B_Mcs15_Mcs12(0x868): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+		return; // use default
+	}
+	else
+	{
+		//===PATH A===
+		//OFDM
+		base = pwrlevelHT40_1S_A;
+		offset = (pwrdiffOFDM & 0x0f);
+		
+#if defined(CONFIG_RTL_92D_SUPPORT)&& defined(CONFIG_RTL_92D_DMDP)
+		//_TXPWR_REDEFINE??
+		if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) {
+			offset = ((pwrdiffOFDM & 0xf0) >> 4);
+		}
+#endif	
+		base = COUNT_SIGN_OFFSET(base, offset);
+		
+		byte0 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[0]);
+		byte1 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[1]);
+		byte2 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[2]);
+		byte3 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[3]);
+		printk("A_Rate18_06(0xe00): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);		
+
+		
+		byte0 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[4]);
+		byte1 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[5]);
+		byte2 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[6]);
+		byte3 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_A[7]);
+		printk("A_Rate54_24(0xe04): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);	 
+
+		//MCS 0 - 7
+		base = pwrlevelHT40_1S_A;
+		if (priv->pshare->CurrentChannelBW == HT_CHANNEL_WIDTH_20) {
+			offset = (pwrdiffHT20 & 0x0f);
+#if defined(CONFIG_RTL_92D_SUPPORT)&& defined(CONFIG_RTL_92D_DMDP)
+			//_TXPWR_REDEFINE??
+			if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) {
+				offset = ((pwrdiffHT20 & 0xf0) >> 4);
+			}
+#endif
+			base = COUNT_SIGN_OFFSET(base, offset);
+		}
+
+		byte0 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[0]);
+		byte1 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[1]);
+		byte2 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[2]);
+		byte3 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[3]);
+		printk("A_Mcs03_Mcs00(0xe10): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);	
+		
+		byte0 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[4]);
+		byte1 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[5]);
+		byte2 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[6]);
+		byte3 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_A[7]);	  
+		printk("A_Mcs07_Mcs04(0xe14): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+
+		offset = (pwrdiffHT40_2S & 0x0f);
+#if defined(CONFIG_RTL_92D_SUPPORT)&& defined(CONFIG_RTL_92D_DMDP)
+		//_TXPWR_REDEFINE??
+		if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) {
+			offset = ((pwrdiffHT40_2S & 0xf0) >> 4);
+		}
+#endif	
+		base = COUNT_SIGN_OFFSET(base, offset);
+
+		//MCS 8 -12
+#ifdef USB_POWER_SUPPORT
+
+		base_6dBm = pwrlevelHT40_1S_A_6dB;
+		
+		if (priv->pshare->CurrentChannelBW == HT_CHANNEL_WIDTH_20) 
+		{
+			offset_6dBm = (pwrdiffHT20_6dB & 0x0f);
+				
+#if defined(CONFIG_RTL_92D_SUPPORT)&& defined(CONFIG_RTL_92D_DMDP)
+			if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) {
+				offset_6dBm = ((pwrdiffHT20_6dB & 0xf0) >> 4);
+			}
+#endif	
+			base_6dBm = COUNT_SIGN_OFFSET(base_6dBm, offset_6dBm);
+		}
+			
+		offset_6dBm = (pwrdiffHT40_2S_6dB & 0x0f);
+			
+#if defined(CONFIG_RTL_92D_SUPPORT)&& defined(CONFIG_RTL_92D_DMDP)
+		if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) {
+			offset_6dBm = ((pwrdiffHT40_2S_6dB & 0xf0) >> 4);
+		}
+#endif	
+		
+		base_6dBm = COUNT_SIGN_OFFSET(base_6dBm, offset_6dBm);
+		
+		if ((pwrlevelHT40_1S_A_6dB!= 0) && (pwrlevelHT40_1S_A_6dB!= pwrlevelHT40_1S_A))
+			byte0 = byte1 = byte2 = byte3 = base_6dBm;
+		else if((base - USB_HT_2S_DIFF) > 0)
+			byte0 = byte1 = byte2 = byte3 = POWER_RANGE_CHECK(base - USB_HT_2S_DIFF);
+		else
+			byte0 = byte1 = byte2 = byte3 = POWER_RANGE_CHECK(defValue - USB_HT_2S_DIFF);
+
+		printk("A_Mcs11_Mcs08(0xe18): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+
+		if ((pwrlevelHT40_1S_A_6dB != 0) && (pwrlevelHT40_1S_A_6dB != pwrlevelHT40_1S_A))
+			byte0 = byte1 = byte2 = byte3 =	base_6dBm;
+		else if((base - USB_HT_2S_DIFF) > 0)
+			byte0 = byte1 = byte2 = byte3 =	POWER_RANGE_CHECK(base - USB_HT_2S_DIFF);
+		else
+			byte0 = byte1 = byte2 = byte3 =	POWER_RANGE_CHECK(defValue - USB_HT_2S_DIFF);
+
+		printk("A_Mcs15_Mcs12(0xe1c): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+
+#else			
+		byte0 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[8]);
+		byte1 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[9]);
+		byte2 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[10]);
+		byte3 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[11]);
+		printk("A_Mcs11_Mcs08(0xe18): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+		byte0 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[12]);
+		byte1 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[13]);
+		byte2 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[14]);
+		byte3 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_A[15]);
+		printk("A_Mcs15_Mcs12(0xe1c): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+#endif
+		//===PATH B===
+		if (pwrlevelHT40_1S_B == 0)
+			pwrlevelHT40_1S_B = defValue;
+		
+		//OFDM
+		base = pwrlevelHT40_1S_B;
+		offset = ((pwrdiffOFDM & 0xf0) >> 4);
+		base = COUNT_SIGN_OFFSET(base, offset);
+		
+		byte0 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[0]);
+		byte1 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[1]);
+		byte2 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[2]);
+		byte3 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[3]);	
+		printk("B_Rate18_06(0x830): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);		
+
+		
+		byte0 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[4]);
+		byte1 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[5]);
+		byte2 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[6]);
+		byte3 = POWER_RANGE_CHECK(base + OFDMTxAgcOffset_B[7]);
+		printk("B_Rate54_24(0x834): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);	 
+
+		//MCS 0 - 7
+		base = pwrlevelHT40_1S_B;
+		if (priv->pshare->CurrentChannelBW == HT_CHANNEL_WIDTH_20) {
+			offset = ((pwrdiffHT20 & 0xf0) >> 4);
+			base = COUNT_SIGN_OFFSET(base, offset);
+		}
+
+		byte0 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[0]);
+		byte1 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[1]);
+		byte2 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[2]);
+		byte3 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[3]);
+		printk("B_Mcs03_Mcs00(0x83c): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);	
+		
+		byte0 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[4]);
+		byte1 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[5]);
+		byte2 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[6]);
+		byte3 = POWER_RANGE_CHECK(base + MCSTxAgcOffset_B[7]);	  
+		printk("B_Mcs07_Mcs04(0x848): 0x%02x%02x%02x%02x\n", byte0, byte1, byte2, byte3);
+
+		offset = ((pwrdiffHT40_2S & 0xf0) >> 4);
+		base = COUNT_SIGN_OFFSET(base, offset);
+
+		//MCS 8 -12
+#ifdef USB_POWER_SUPPORT
+
+		base_6dBm = pwrlevelHT40_1S_B_6dB;
+		if (priv->pshare->CurrentChannelBW == HT_CHANNEL_WIDTH_20) {
+			offset_6dBm = ((pwrdiffHT20_6dB & 0xf0) >> 4);
+			base_6dBm = COUNT_SIGN_OFFSET(base_6dBm, offset_6dBm);
+		}
+		
+		offset_6dBm = ((pwrdiffHT40_2S_6dB& 0xf0) >> 4);
+		base_6dBm = COUNT_SIGN_OFFSET(base_6dBm, offset_6dBm);
+		
+		if ((pwrlevelHT40_1S_B_6dB!= 0) && (pwrlevelHT40_1S_B_6dB!= pwrlevelHT40_1S_B))
+			byte0 = byte1 = byte2 = byte3 = base_6dBm;
+		else if((base - USB_HT_2S_DIFF) > 0)
+			byte0 = byte1 = byte2 = byte3 = POWER_RANGE_CHECK(base - USB_HT_2S_DIFF);
+		else
+			byte0 = byte1 = byte2 = byte3 = POWER_RANGE_CHECK(defValue - USB_HT_2S_DIFF);
+
+		printk("B_Mcs11_Mcs08(0x84c): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+		if ((pwrlevelHT40_1S_B_6dB != 0) && (pwrlevelHT40_1S_B_6dB != pwrlevelHT40_1S_B))
+			byte0 = byte1 = byte2 = byte3 =	base_6dBm;
+		else if((base - USB_HT_2S_DIFF) > 0)
+			byte0 = byte1 = byte2 = byte3 =	POWER_RANGE_CHECK(base - USB_HT_2S_DIFF);
+		else
+			byte0 = byte1 = byte2 = byte3 =	POWER_RANGE_CHECK(defValue - USB_HT_2S_DIFF);
+
+		printk("B_Mcs15_Mcs12(0x868): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+#else			
+		byte0 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[8]);
+		byte1 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[9]);
+		byte2 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[10]);
+		byte3 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[11]);
+		printk("B_Mcs11_Mcs08(0x84c): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+		byte0 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[12]);
+		byte1 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[13]);
+		byte2 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[14]);
+		byte3 = POWER_RANGE_CHECK(base + priv->pshare->phw->MCSTxAgcOffset_B[15]);
+		printk("B_Mcs15_Mcs12(0x868): 0x%02x%02x%02x%02x\n",byte0, byte1, byte2, byte3);
+
+		return;
+#endif
+	}
+
+}
+
+static void txpwr_dump(struct rtl8192cd_priv *priv, int start, int end)
+{
+
+	int channel = 0;
+	int tmp = 0;
+	int defValue = 0x28;
+	char base, byte0, byte1, byte2, byte3;
+	unsigned char  offset;
+	unsigned int phyBandSelect;
+	
+	char pwrlevelCCK_A = 0;
+	char pwrlevelCCK_B = 0;
+	
+	unsigned char pwrlevelHT40_1S_A = 0;
+	unsigned char pwrlevelHT40_1S_B = 0;
+	unsigned char pwrdiffHT40_2S = 0;
+	unsigned char pwrdiffHT20 = 0;
+	unsigned char pwrdiffOFDM = 0;
+
+#if 1 // USB_POWER_SUPPORT
+	unsigned char pwrlevelHT40_1S_A_6dB = 0;
+	unsigned char pwrlevelHT40_1S_B_6dB = 0;
+	unsigned char pwrdiffHT40_2S_6dB = 0;
+	unsigned char pwrdiffHT20_6dB = 0;
+	char base_6dBm;
+	unsigned char offset_6dBm;
+#endif
+
+	int pg_tbl_idx = 0;
+	int PHYREG_PG = 4;
+	char MCSTxAgcOffset_A[16];
+	char MCSTxAgcOffset_B[16];
+	char OFDMTxAgcOffset_A[8];
+	char OFDMTxAgcOffset_B[8];
+
+	//_TXPWR_REDEFINE ?? int or char ??
+	char CCKTxAgc_A[4];
+	char CCKTxAgc_B[4];
+
+#ifdef TXPWR_LMT
+	unsigned int tgpwr_CCK = 0;
+	unsigned int tgpwr_OFDM = 0;
+	unsigned int txpwr_lmt_CCK = 0;
+	unsigned int txpwr_lmt_OFDM = 0;
+
+	unsigned int tgpwr_HT1S = 0;
+	unsigned int tgpwr_HT2S = 0;
+	unsigned int txpwr_lmt_HT1S = 0;
+	unsigned int txpwr_lmt_HT2S = 0;
+
+	int i;
+	int max_idx;
+#endif
+
+	if(end <= 14)
+		phyBandSelect = PHY_BAND_2G;
+	else
+		phyBandSelect = PHY_BAND_5G;
+
+
+#ifdef CONFIG_RTL_92D_SUPPORT
+			if (GET_CHIP_VER(priv)==VERSION_8192D) 
+			{
+#ifdef CONFIG_RTL_8198
+				if (phyBandSelect & PHY_BAND_5G)
+					defValue=0x28;
+				else
+					defValue=0x2d;
+#else
+				if (phyBandSelect & PHY_BAND_5G)
+					defValue=0x26;
+				else
+					defValue=0x30;
+#endif
+			}
+#endif
+
+	
+	if(start > end)
+	{
+		printk("Error! start = %d < end = %d\n", start, end);
+	}
+	else if (end <= 14)
+	{
+		for(channel = start; channel <= end; channel++ ) //_TXPWR_REDEFINE ?? DO NOT PRINT TOO MUCH
+		{
+			
+			printk("\n[CHANNEL%03d]", channel);
+			printk("\n");
+
+			//===GET FROM FLASH===
+			
+			pwrlevelCCK_A = priv->pmib->dot11RFEntry.pwrlevelCCK_A[channel-1];
+			pwrlevelCCK_B = priv->pmib->dot11RFEntry.pwrlevelCCK_B[channel-1];
+			pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevelHT40_1S_A[channel-1];
+			pwrlevelHT40_1S_B = priv->pmib->dot11RFEntry.pwrlevelHT40_1S_B[channel-1];
+			pwrdiffHT40_2S = priv->pmib->dot11RFEntry.pwrdiffHT40_2S[channel-1];
+			pwrdiffHT20 = priv->pmib->dot11RFEntry.pwrdiffHT20[channel-1];
+			pwrdiffOFDM = priv->pmib->dot11RFEntry.pwrdiffOFDM[channel-1];
+
+#ifdef USB_POWER_SUPPORT
+			printk(">>FLASH - 13dBm<<\n");
+#endif
+			printk("pwrlevelCCK_A = %d, pwrlevelCCK_B = %d\n", pwrlevelCCK_A, pwrlevelCCK_B);
+			printk("pwrlevelHT40_1S_A = %d, pwrlevelHT40_1S_B = %d\n", pwrlevelHT40_1S_A, pwrlevelHT40_1S_B);
+			printk("pwrdiffHT40_2S = %d(0x%02x), pwrdiffHT20 = %d(0x%02x), pwrdiffOFDM = %d(0x%02x)\n", 
+						pwrdiffHT40_2S, pwrdiffHT40_2S,
+						pwrdiffHT20, pwrdiffHT20,
+						pwrdiffOFDM, pwrdiffOFDM);
+
+#ifdef USB_POWER_SUPPORT
+			printk(">>FLASH - 6dBm<<\n");
+			pwrlevelHT40_1S_A_6dB = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_A[channel-1];
+			pwrlevelHT40_1S_B_6dB = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+			pwrdiffHT40_2S_6dB = priv->pmib->dot11RFEntry.pwrdiff5GHT40_2S[channel-1];
+			pwrdiffHT20_6dB = priv->pmib->dot11RFEntry.pwrdiff5GHT20[channel-1];
+			
+			printk("pwrlevelHT40_1S_A = %d, pwrlevelHT40_1S_B = %d\n", pwrlevelHT40_1S_A_6dB, pwrlevelHT40_1S_B_6dB);
+			printk("pwrdiffHT40_2S = %d(0x%02x), pwrdiffHT20 = %d(0x%02x)\n", 
+						pwrdiffHT40_2S_6dB, pwrdiffHT40_2S_6dB,
+						pwrdiffHT20_6dB, pwrdiffHT20_6dB);
+#endif
+
+
+#if defined(CONFIG_RTL_92D_SUPPORT) && defined(CONFIG_RTL_92D_DMDP)
+			if (GET_CHIP_VER(priv)==VERSION_8192D) 
+			{
+				if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1)
+				{
+					printk("92D-DMDP WLAN1 , Set pwrlevelCCK_A = pwrlevelCCK_B\n");
+					if (phyBandSelect & PHY_BAND_2G)  
+					{
+						pwrlevelCCK_A = priv->pmib->dot11RFEntry.pwrlevelCCK_B[channel-1];
+					}
+				}
+			}
+#endif
+
+
+#ifdef CONFIG_RTL_92D_DMDP//_Eric ?? Get chip ??
+			if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) 
+			{
+				printk("92D-DMDP WLAN1, Set pwrlevelHT40_1S_A = pwrlevelHT40_1S_B\n");
+				if (phyBandSelect & PHY_BAND_5G)
+				{
+					pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+				}
+				else 
+				{
+					pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevelHT40_1S_B[channel-1];
+				}
+#ifdef USB_POWER_SUPPORT
+				if (phyBandSelect & PHY_BAND_5G) 
+				{
+					pwrlevelHT40_1S_A_6dB= priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel];
+				} 
+				else 
+				{
+					pwrlevelHT40_1S_A_6dB= priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+				}	
+#endif
+			}
+#endif
+
+
+			//===POWER BY RATE===
+			printk(">>Power By Rate Table<<\n");
+			pg_tbl_idx = 0;
+
+#ifdef CONFIG_RTL_92D_SUPPORT
+			if (GET_CHIP_VER(priv) == VERSION_8192D)
+			{
+				if (priv->pshare->is_40m_bw == 0)
+				{
+					if (channel<=3)
+						pg_tbl_idx = BGN_20_CH1_3;
+					else if (channel<=9)
+						pg_tbl_idx = BGN_20_CH4_9;
+					else
+						pg_tbl_idx = BGN_20_CH10_14;
+				}
+				else
+				{			
+					if (channel<=3)
+						pg_tbl_idx = BGN_40_CH1_3;
+					else if (channel<=9)
+						pg_tbl_idx = BGN_40_CH4_9;
+					else
+						pg_tbl_idx = BGN_40_CH10_14;
+				}
+			}
+
+			//In Noraml Driver mode, and if mib 'pwr_by_rate' = 0 >> Use default power by rate table 
+			if( (priv->pshare->rf_ft_var.mp_specific == 0) && (priv->pshare->rf_ft_var.pwr_by_rate == 0) )
+				pg_tbl_idx = BGN_2040_ALL;
+#endif
+
+			printk("pg_tbl_idx = %d\n", pg_tbl_idx);
+
+			Read_PG_File(priv, PHYREG_PG, pg_tbl_idx, 
+					MCSTxAgcOffset_A, MCSTxAgcOffset_B, 
+					OFDMTxAgcOffset_A, OFDMTxAgcOffset_B,
+					CCKTxAgc_A, CCKTxAgc_B);
+
+			printk("MCSTxAgcOffset_A - ");
+			for(tmp = 0; tmp <16; tmp ++)
+				printk("%02x ", MCSTxAgcOffset_A[tmp]);
+			printk("\n");
+
+			printk("MCSTxAgcOffset_B - ");
+			for(tmp = 0; tmp <16; tmp ++)
+				printk("%02x ", MCSTxAgcOffset_B[tmp]);
+			printk("\n");
+
+			printk("OFDMTxAgcOffset_A - ");
+			for(tmp = 0; tmp <8; tmp ++)
+				printk("%02x ", OFDMTxAgcOffset_A[tmp]);
+			printk("\n");
+
+			printk("OFDMTxAgcOffset_B - ");
+			for(tmp = 0; tmp <8; tmp ++)
+				printk("%02x ", OFDMTxAgcOffset_B[tmp]);
+			printk("\n");
+
+			printk("CCKTxAgc_A - ");
+			for(tmp = 0; tmp <4; tmp ++)
+				printk("%02x ", CCKTxAgc_A[tmp]);
+			printk("\n");
+
+			printk("CCKTxAgc_B - ");
+			for(tmp = 0; tmp <4; tmp ++)
+				printk("%02x ", CCKTxAgc_B[tmp]);
+			printk("\n");
+
+
+			//===Count FLASH + POWER BY RATE===
+
+			printk(">>Tx Power - Power By Rate<<\n");
+	
+			dump_cck(priv, pwrlevelCCK_A, pwrlevelCCK_B, CCKTxAgc_A, CCKTxAgc_B);
+			
+			dump_ofdm_mcs0(priv, defValue, pwrlevelHT40_1S_A, pwrlevelHT40_1S_B, 
+				pwrdiffHT40_2S, pwrdiffHT20, pwrdiffOFDM, 
+				pwrlevelHT40_1S_A_6dB, pwrlevelHT40_1S_B_6dB,
+				pwrdiffHT40_2S_6dB, pwrdiffHT20_6dB,
+				MCSTxAgcOffset_A, MCSTxAgcOffset_B, OFDMTxAgcOffset_A, OFDMTxAgcOffset_B,phyBandSelect);
+				
+			
+#ifdef TXPWR_LMT
+			//===BAND EDGE LIMIT===
+			if (priv->pshare->rf_ft_var.disable_txpwrlmt)
+				continue;
+			
+			printk(">>Band Edge Limit Table<<\n");
+			tmp = ch2idx(channel);
+			
+			txpwr_lmt_CCK = priv->pshare->ch_pwr_lmtCCK[tmp];
+			txpwr_lmt_OFDM = priv->pshare->ch_pwr_lmtOFDM[tmp];
+			tgpwr_CCK = priv->pshare->ch_tgpwr_CCK[tmp];
+			tgpwr_OFDM = priv->pshare->ch_tgpwr_OFDM[tmp];
+
+			printk("txpwr_lmt_CCK = %d tgpwr_CCK = %d\n", txpwr_lmt_CCK,  tgpwr_CCK);
+			printk("txpwr_lmt_OFDM = %d tgpwr_OFDM = %d\n", txpwr_lmt_OFDM,  tgpwr_OFDM);
+
+			if (priv->pshare->is_40m_bw == 0)
+			{
+				txpwr_lmt_HT1S = priv->pshare->ch_pwr_lmtHT20_1S[tmp];
+				txpwr_lmt_HT2S = priv->pshare->ch_pwr_lmtHT20_2S[tmp];
+				tgpwr_HT1S = priv->pshare->ch_tgpwr_HT20_1S[tmp];
+				tgpwr_HT2S = priv->pshare->ch_tgpwr_HT20_2S[tmp];
+
+				printk("txpwr_lmt_HT1S_20M = %d tgpwr_HT1S_20M = %d\n", txpwr_lmt_HT1S,  tgpwr_HT1S);
+				printk("txpwr_lmt_HT2S_20M = %d tgpwr_HT2S_20M = %d\n", txpwr_lmt_HT2S,  tgpwr_HT2S);
+			}
+			else
+			{
+				txpwr_lmt_HT1S = priv->pshare->ch_pwr_lmtHT40_1S[tmp];
+				txpwr_lmt_HT2S = priv->pshare->ch_pwr_lmtHT40_2S[tmp];
+				tgpwr_HT1S = priv->pshare->ch_tgpwr_HT40_1S[tmp];
+				tgpwr_HT2S = priv->pshare->ch_tgpwr_HT40_2S[tmp];
+
+				printk("txpwr_lmt_HT1S_40M = %d tgpwr_HT1S_40M = %d\n", txpwr_lmt_HT1S,  tgpwr_HT1S);
+				printk("txpwr_lmt_HT2S_40M = %d tgpwr_HT2S_40M = %d\n", txpwr_lmt_HT2S,  tgpwr_HT2S);
+			}
+
+			//===Count FLASH + min{POWER BY RATE, LIMIT}===
+			if((txpwr_lmt_CCK == 0) && (txpwr_lmt_OFDM == 0) 
+				&& (txpwr_lmt_HT1S == 0) && (txpwr_lmt_HT1S == 0))
+			{
+				printk("No Band Edge Limit for this channel=%d\n", channel);
+				continue;
+			}
+			
+			if (txpwr_lmt_CCK || tgpwr_CCK){
+				max_idx=255;
+			}else{
+				max_idx = (txpwr_lmt_CCK - tgpwr_CCK);
+			}
+
+			for (i=0; i<=3; i++) {
+				CCKTxAgc_A[i] = POWER_MIN_CHECK(CCKTxAgc_A[i], max_idx);
+				CCKTxAgc_A[i] = POWER_MIN_CHECK(CCKTxAgc_A[i], max_idx);
+			}
+
+			dump_cck(priv, pwrlevelCCK_A, pwrlevelCCK_B, CCKTxAgc_A, CCKTxAgc_B);
+		
+			if (!txpwr_lmt_OFDM || !tgpwr_OFDM){
+				max_idx=255;
+			}else{
+				max_idx = (txpwr_lmt_OFDM - tgpwr_OFDM);
+			}
+
+			for (i=0; i<=7; i++) {
+				OFDMTxAgcOffset_A[i] = POWER_MIN_CHECK(OFDMTxAgcOffset_A[i], max_idx);
+				OFDMTxAgcOffset_B[i] = POWER_MIN_CHECK(OFDMTxAgcOffset_B[i], max_idx);
+			}
+
+			if (!txpwr_lmt_HT1S || !tgpwr_HT1S){
+				max_idx = 255;
+			}else{
+				max_idx = (txpwr_lmt_HT1S - tgpwr_HT1S);
+			}
+
+			for (i=0; i<=7; i++) {
+				MCSTxAgcOffset_A[i] = POWER_MIN_CHECK(MCSTxAgcOffset_A[i], max_idx);
+				MCSTxAgcOffset_B[i] = POWER_MIN_CHECK(MCSTxAgcOffset_B[i], max_idx);
+			}
+
+			if (!txpwr_lmt_HT2S || !tgpwr_HT2S){
+				max_idx = 255;
+			}else{
+				max_idx = (txpwr_lmt_HT2S - tgpwr_HT2S);
+			}
+
+			for (i=8; i<=15; i++) {
+				MCSTxAgcOffset_A[i] = POWER_MIN_CHECK(MCSTxAgcOffset_A[i], max_idx);
+				MCSTxAgcOffset_B[i] = POWER_MIN_CHECK(MCSTxAgcOffset_B[i], max_idx);
+			}
+
+			dump_ofdm_mcs0(priv, defValue, pwrlevelHT40_1S_A, pwrlevelHT40_1S_B, 
+				pwrdiffHT40_2S, pwrdiffHT20, pwrdiffOFDM, 
+				pwrlevelHT40_1S_A_6dB, pwrlevelHT40_1S_B_6dB,
+				pwrdiffHT40_2S_6dB, pwrdiffHT20_6dB,
+				MCSTxAgcOffset_A, MCSTxAgcOffset_B, OFDMTxAgcOffset_A, OFDMTxAgcOffset_B,phyBandSelect);
+#endif
+	
+		}
+	}
+	else if (end <= 199)
+	{
+		for(channel = start; channel <= end; channel+=2 )
+		{
+			int ori_channel = channel;
+		
+			printk("\n[CHANNEL%03d]", channel);
+			printk("\n");
+
+			//TXPWR_REDEFINE
+			//FLASH GROUP [36-99] [100-148] [149-165] 
+			//Special Cases: [34-2, 34, 34+2,  36-2, 165+2]:No DATA , [149-2]:FLASH DATA OF Channel-146-6dBm
+			//Use Flash data of channel 36 & 140 & 165 for these special cases.
+			if((channel > 30) && (channel < 36))
+				channel = 36;
+			else if (channel == (149-2))
+				channel = 140;
+			else if(channel > 165)
+				channel = 165;
+		
+			//===GET FROM FLASH===
+			
+			pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_A[channel-1];
+			pwrlevelHT40_1S_B = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+			pwrdiffHT40_2S = priv->pmib->dot11RFEntry.pwrdiff5GHT40_2S[channel-1];
+			pwrdiffHT20 = priv->pmib->dot11RFEntry.pwrdiff5GHT20[channel-1];
+			pwrdiffOFDM = priv->pmib->dot11RFEntry.pwrdiff5GOFDM[channel-1];
+
+#ifdef USB_POWER_SUPPORT
+			printk(">>Flash - 13dBm<<\n");
+#endif
+
+			printk("pwrlevelHT40_1S_A = %d, pwrlevelHT40_1S_B = %d\n", pwrlevelHT40_1S_A, pwrlevelHT40_1S_B);
+			printk("pwrdiffHT40_2S = %d(0x%02x), pwrdiffHT20 = %d(0x%02x), pwrdiffOFDM = %d(0x%02x)\n", 
+						pwrdiffHT40_2S, pwrdiffHT40_2S,
+						pwrdiffHT20, pwrdiffHT20,
+						pwrdiffOFDM, pwrdiffOFDM);
+
+#ifdef USB_POWER_SUPPORT
+			printk(">>Flash - 6dBm<<\n");
+			pwrlevelHT40_1S_A_6dB = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_A[channel];
+			pwrlevelHT40_1S_B_6dB = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel];
+			pwrdiffHT40_2S_6dB = priv->pmib->dot11RFEntry.pwrdiff5GHT40_2S[channel];
+			pwrdiffHT20_6dB = priv->pmib->dot11RFEntry.pwrdiff5GHT20[channel];
+			
+			printk("pwrlevelHT40_1S_A = %d, pwrlevelHT40_1S_B = %d\n", pwrlevelHT40_1S_A_6dB, pwrlevelHT40_1S_B_6dB);
+			printk("pwrdiffHT40_2S = %d(0x%02x), pwrdiffHT20 = %d(0x%02x)\n", 
+						pwrdiffHT40_2S_6dB, pwrdiffHT40_2S_6dB,
+						pwrdiffHT20_6dB, pwrdiffHT20_6dB);
+#endif
+
+#ifdef CONFIG_RTL_92D_DMDP
+			if (priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY && priv->pshare->wlandev_idx == 1) 
+			{
+				printk("92D-DMDP WLAN1, Set pwrlevelHT40_1S_A = pwrlevelHT40_1S_B\n");
+				if (phyBandSelect & PHY_BAND_5G)
+				{
+					pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+				}
+				else 
+				{
+					pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevelHT40_1S_B[channel-1];
+				}
+#ifdef USB_POWER_SUPPORT
+				if (phyBandSelect & PHY_BAND_5G) 
+				{
+					pwrlevelHT40_1S_A_6dB= priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel];
+				} 
+				else 
+				{
+					pwrlevelHT40_1S_A_6dB= priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+				}	
+#endif
+			}
+#endif
+
+			channel = ori_channel;
+
+
+			//===POWER BY RATE===
+			printk(">>Power By Rate Table<<\n");
+
+			pg_tbl_idx = 0;
+
+#ifdef CONFIG_RTL_92D_SUPPORT
+			if (GET_CHIP_VER(priv) == VERSION_8192D)
+			{
+				if (priv->pshare->is_40m_bw == 0)
+				{
+					if (channel<=99)
+						pg_tbl_idx = AN_20_CH_36_64;
+					else if (channel<=148)
+						pg_tbl_idx = AN_20_CH_100_140;
+					else
+						pg_tbl_idx = AN_20_CH_149_165;
+				}
+				else
+				{
+					if (channel<=99)
+						pg_tbl_idx = AN_40_CH_36_64;
+					else if (channel<=148)
+						pg_tbl_idx = AN_40_CH_100_140;
+					else
+						pg_tbl_idx = AN_40_CH_149_165;
+				}
+			}
+
+			//In Noraml Driver mode, and if mib 'pwr_by_rate' = 0 >> Use default power by rate table 
+			if( (priv->pshare->rf_ft_var.mp_specific == 0) && (priv->pshare->rf_ft_var.pwr_by_rate == 0) )
+				pg_tbl_idx = BGN_2040_ALL;
+#endif
+
+			printk("pg_tbl_idx = %d\n", pg_tbl_idx);
+
+			Read_PG_File(priv, PHYREG_PG, pg_tbl_idx, 
+					MCSTxAgcOffset_A, MCSTxAgcOffset_B, 
+					OFDMTxAgcOffset_A, OFDMTxAgcOffset_B,
+					CCKTxAgc_A, CCKTxAgc_B);
+
+			printk("MCSTxAgcOffset_A - ");
+			for(tmp = 0; tmp <16; tmp ++)
+				printk("%02x ", MCSTxAgcOffset_A[tmp]);
+			printk("\n");
+
+			printk("MCSTxAgcOffset_B - ");
+			for(tmp = 0; tmp <16; tmp ++)
+				printk("%02x ", MCSTxAgcOffset_B[tmp]);
+			printk("\n");
+
+			printk("OFDMTxAgcOffset_A - ");
+			for(tmp = 0; tmp <8; tmp ++)
+				printk("%02x ", OFDMTxAgcOffset_A[tmp]);
+			printk("\n");
+
+			printk("OFDMTxAgcOffset_B - ");
+			for(tmp = 0; tmp <8; tmp ++)
+				printk("%02x ", OFDMTxAgcOffset_B[tmp]);
+			printk("\n");
+
+			printk("CCKTxAgc_A - ");
+			for(tmp = 0; tmp <4; tmp ++)
+				printk("%02x ", CCKTxAgc_A[tmp]);
+			printk("\n");
+
+			printk("CCKTxAgc_B - ");
+			for(tmp = 0; tmp <4; tmp ++)
+				printk("%02x ", CCKTxAgc_B[tmp]);
+			printk("\n");
+
+
+			//===Count FLASH + POWER BY RATE===
+
+			printk(">>Tx Power - Power By Rate<<\n");
+			
+			dump_ofdm_mcs0(priv, defValue, pwrlevelHT40_1S_A, pwrlevelHT40_1S_B, 
+				pwrdiffHT40_2S, pwrdiffHT20, pwrdiffOFDM, 
+				pwrlevelHT40_1S_A_6dB, pwrlevelHT40_1S_B_6dB,
+				pwrdiffHT40_2S_6dB, pwrdiffHT20_6dB,
+				MCSTxAgcOffset_A, MCSTxAgcOffset_B, OFDMTxAgcOffset_A, OFDMTxAgcOffset_B, phyBandSelect);
+
+
+#ifdef TXPWR_LMT
+			//===BAND EDGE LIMIT===
+			if (priv->pshare->rf_ft_var.disable_txpwrlmt)
+				continue;
+
+			printk(">>Band Edge Limit Table<<\n");
+
+			tmp = ch2idx(channel);
+
+			txpwr_lmt_CCK = priv->pshare->ch_pwr_lmtCCK[tmp];
+			txpwr_lmt_OFDM = priv->pshare->ch_pwr_lmtOFDM[tmp];
+			tgpwr_CCK = priv->pshare->ch_tgpwr_CCK[tmp];
+			tgpwr_OFDM = priv->pshare->ch_tgpwr_OFDM[tmp];
+
+			printk("txpwr_lmt_CCK = %d tgpwr_CCK = %d\n", txpwr_lmt_CCK,  tgpwr_CCK);
+			printk("txpwr_lmt_OFDM = %d tgpwr_OFDM = %d\n", txpwr_lmt_OFDM,  tgpwr_OFDM);
+
+			if (priv->pshare->is_40m_bw == 0)
+			{
+				txpwr_lmt_HT1S = priv->pshare->ch_pwr_lmtHT20_1S[tmp];
+				txpwr_lmt_HT2S = priv->pshare->ch_pwr_lmtHT20_2S[tmp];
+				tgpwr_HT1S = priv->pshare->ch_tgpwr_HT20_1S[tmp];
+				tgpwr_HT2S = priv->pshare->ch_tgpwr_HT20_2S[tmp];
+
+				printk("txpwr_lmt_HT1S_20M = %d tgpwr_HT1S_20M = %d\n", txpwr_lmt_HT1S,  tgpwr_HT1S);
+				printk("txpwr_lmt_HT2S_20M = %d tgpwr_HT2S_20M = %d\n", txpwr_lmt_HT2S,  tgpwr_HT2S);
+			}
+			else
+			{
+				txpwr_lmt_HT1S = priv->pshare->ch_pwr_lmtHT40_1S[tmp];
+				txpwr_lmt_HT2S = priv->pshare->ch_pwr_lmtHT40_2S[tmp];
+				tgpwr_HT1S = priv->pshare->ch_tgpwr_HT40_1S[tmp];
+				tgpwr_HT2S = priv->pshare->ch_tgpwr_HT40_2S[tmp];
+
+				printk("txpwr_lmt_HT1S_40M = %d tgpwr_HT1S_40M = %d\n", txpwr_lmt_HT1S,  tgpwr_HT1S);
+				printk("txpwr_lmt_HT2S_40M = %d tgpwr_HT2S_40M = %d\n", txpwr_lmt_HT2S,  tgpwr_HT2S);
+			}
+
+			//===Count FLASH + min{POWER BY RATE, LIMIT}===
+			if((txpwr_lmt_OFDM == 0) && (txpwr_lmt_HT1S == 0) && (txpwr_lmt_HT1S == 0))
+			{
+				printk("No Band Edge Limit for this channel=%d\n", channel);
+				continue;
+			}
+
+			if (!txpwr_lmt_OFDM || !tgpwr_OFDM){
+				max_idx=255;
+			}else{
+				max_idx = (txpwr_lmt_OFDM - tgpwr_OFDM);
+			}
+
+			for (i=0; i<=7; i++) {
+				OFDMTxAgcOffset_A[i] = POWER_MIN_CHECK(OFDMTxAgcOffset_A[i], max_idx);
+				OFDMTxAgcOffset_B[i] = POWER_MIN_CHECK(OFDMTxAgcOffset_B[i], max_idx);
+			}
+
+			if (!txpwr_lmt_HT1S || !tgpwr_HT1S){
+				max_idx = 255;
+			}else{
+				max_idx = (txpwr_lmt_HT1S - tgpwr_HT1S);
+			}
+			
+			for (i=0; i<=7; i++) {
+				MCSTxAgcOffset_A[i] = POWER_MIN_CHECK(MCSTxAgcOffset_A[i], max_idx);
+				MCSTxAgcOffset_B[i] = POWER_MIN_CHECK(MCSTxAgcOffset_B[i], max_idx);
+			}
+			
+			if (!txpwr_lmt_HT2S || !tgpwr_HT2S){
+				max_idx = 255;
+			}else{
+				max_idx = (txpwr_lmt_HT2S - tgpwr_HT2S);
+			}
+			
+			for (i=8; i<=15; i++) {
+				MCSTxAgcOffset_A[i] = POWER_MIN_CHECK(MCSTxAgcOffset_A[i], max_idx);
+				MCSTxAgcOffset_B[i] = POWER_MIN_CHECK(MCSTxAgcOffset_B[i], max_idx);
+			}
+
+			dump_ofdm_mcs0(priv, defValue, pwrlevelHT40_1S_A, pwrlevelHT40_1S_B, 
+				pwrdiffHT40_2S, pwrdiffHT20, pwrdiffOFDM, 
+				pwrlevelHT40_1S_A_6dB, pwrlevelHT40_1S_B_6dB,
+				pwrdiffHT40_2S_6dB, pwrdiffHT20_6dB,
+				MCSTxAgcOffset_A, MCSTxAgcOffset_B, OFDMTxAgcOffset_A, OFDMTxAgcOffset_B, phyBandSelect);
+
+#endif
+	
+		}
+	}
+
+}
+
+
+
 static void reg_dump(struct rtl8192cd_priv *priv, char *str)
 {
 	int i, j, len;
 	unsigned char tmpbuf[100];
+
+//_TXPWR_REDEFINE
+//_TXPWR_REDEFINE ?? Dump Too much will cause hang up ??
+	printk("[Channel-%03d]", priv->pmib->dot11RFEntry.dot11channel);
+
+	if (priv->pshare->is_40m_bw == 0)
+	{
+		printk(" - 20M BW");
+	}
+	else
+	{
+		printk(" - 40M BW ");
+			
+		if (priv->pshare->offset_2nd_chan == 1)
+			printk("BELOW");
+		else if (priv->pshare->offset_2nd_chan == 2)
+			printk("ABOVE");
+		else if (priv->pshare->offset_2nd_chan == 0)
+			printk("DONT CARE");
+	}
+	
+	printk("\n");
+
+
+	if (strcmp(str, "tx") == 0)
+	{
+		printk("\n==2G L 1-3==\n");
+		txpwr_dump(priv, 1, 1);
+		printk("\n==2G M 4-9==\n");
+		txpwr_dump(priv, 4, 4);
+		printk("\n==2G H 10-14==\n");
+		txpwr_dump(priv, 10, 10);
+
+
+#ifdef CONFIG_RTL_92D_SUPPORT
+		if (GET_CHIP_VER(priv)==VERSION_8192D)
+		{	
+			printk("\n==5G G1_L 36-45==\n");
+			txpwr_dump(priv, 36, 36);
+			printk("\n==5G G1_M 46-55==\n");
+			txpwr_dump(priv, 46, 46);
+			printk("\n==5G G1_H 56-99==\n");
+			txpwr_dump(priv, 56, 56);
+			printk("\n==5G G2_L 100-113==\n");
+			txpwr_dump(priv, 100, 100);
+			printk("\n==5G G2_M 114-127==\n");
+			txpwr_dump(priv, 114, 114);
+			printk("\n==5G G2_H  128-148==\n");
+			txpwr_dump(priv, 128, 128);
+			printk("\n==5G G3_L 149-154==\n");
+			txpwr_dump(priv, 149, 149);
+			printk("\n==5G G3_M 155-160==\n");
+			txpwr_dump(priv, 155, 155);
+			printk("\n==5G G3_H 161-165==\n");
+			txpwr_dump(priv, 161, 161);
+		}
+#endif
+
+		return;
+	}
+
+
+	if (strcmp(str, "tx-2g") == 0)
+	{
+		printk("\n==2G L LIST==\n");
+		txpwr_dump(priv, 1, 3);
+		printk("\n==2G M LIST==\n");
+		txpwr_dump(priv, 4, 9);
+		printk("\n==2G H LIST==\n");
+		txpwr_dump(priv, 10, 14);
+
+		return;
+	}
+
+	if (strcmp(str, "tx-5gl") == 0)
+	{
+#ifdef CONFIG_RTL_92D_SUPPORT
+		if (GET_CHIP_VER(priv)==VERSION_8192D)
+		{	
+			printk("\n==5G G1_L LIST==\n");
+			txpwr_dump(priv, 36, 45);
+			printk("\n==5G G1_M LIST==\n");
+			txpwr_dump(priv, 46, 55);
+			printk("\n==5G G1_H LIST==\n");
+			txpwr_dump(priv, 56, 66); //99 > 66, Because dump too much will cause reboot
+		}
+		else
+#endif
+		{
+			printk("NOT 92D, NOT support 5G\n");
+		}
+
+		return;
+	}
+
+	if (strcmp(str, "tx-5gm") == 0)
+	{
+#ifdef CONFIG_RTL_92D_SUPPORT
+		if (GET_CHIP_VER(priv)==VERSION_8192D)
+		{	
+			printk("\n==5G G2_L LIST==\n");
+			txpwr_dump(priv, 100, 113);
+			printk("\n==5G G2_M LIST==\n");
+			txpwr_dump(priv, 114, 127);
+			printk("\n==5G G2_H LIST==\n");
+			txpwr_dump(priv, 128, 148);
+		}
+		else
+#endif
+		{
+			printk("NOT 92D, NOT support 5G\n");
+		}
+
+		return;
+	}
+
+	if (strcmp(str, "tx-5gh") == 0)
+	{
+
+#ifdef CONFIG_RTL_92D_SUPPORT
+		if (GET_CHIP_VER(priv)==VERSION_8192D)
+		{	
+			printk("\n==5G G3_L LIST==\n");
+			txpwr_dump(priv, 149, 154);
+			printk("\n==5G G3_M LIST==\n");
+			txpwr_dump(priv, 155, 160);
+			printk("\n==5G G3_H LIST==\n");
+			txpwr_dump(priv, 161, 165);
+		}
+		else
+#endif
+		{
+			printk("NOT 92D, NOT support 5G\n");
+		}
+
+		return;
+	}
 
 	if (strcmp(str, "all") != 0) {
 		panic_printk("Initial Gain, Sensitivity:\n");
@@ -3627,9 +4917,6 @@ static int rtl8192cd_join_AutoTest(struct rtl8192cd_priv *priv, unsigned char *d
 		else
 #endif
 		{
-#ifndef WIFI_WPAS
-			static int check_bss_encrypt(struct rtl8192cd_priv *priv);
-#endif
 			if (check_bss_encrypt(priv) == FAIL) {
 				DEBUG_INFO("Encryption mismatch!\n");
 				ret = 2;
@@ -4973,7 +6260,7 @@ int rtl8192cd_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		ret = iwpriv_atoi((unsigned char *)(wrq->u.data.pointer),tmpbuf,wrq->u.data.length);
 		ret = issue_mic_err_pkt(priv, tmpbuf);
 		break;
-
+#ifdef CLIENT_MODE
 	case SIOCSIWRTLMICREPORT:
 	{
 		struct sta_info *pstat;
@@ -4982,6 +6269,7 @@ int rtl8192cd_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	}
 		ret = 0;
 		break;
+#endif
 #endif
 
 

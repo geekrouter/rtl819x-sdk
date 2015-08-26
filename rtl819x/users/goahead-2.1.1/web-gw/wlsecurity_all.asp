@@ -822,6 +822,28 @@ function ValidateForm(passForm)
 	else
 		tF.use1x<% write(getIndex("wlan_idx")); %>.value = "OFF";	
 
+
+	if (enc_mode == 0 ) { //open
+			// for test plan 4.1.8 ; WPS2DOTX
+			if(wps_mode_old==0 || wps_mode_old==3){
+				if(!confirm("encryption is none now")){
+					return false;
+				}
+			}
+	}	
+	
+	if (enc_mode == 1 ) { // WEP
+			// for test plan 4.1.9 ; WPS2DOTX
+			if(wps_mode_old==0 || wps_mode_old==3){
+				if(!confirm("if WEP is turn on,WPS2.0 will be disabled")){
+					return false;
+				}
+			}
+	}	
+
+
+
+			
 	if (enc_mode == 1 && !tF.use1x<% write(getIndex("wlan_idx")); %>.checked) {
 		if (check_wepkey(tF, <% write(getIndex("wlan_idx")); %>) != true)
 			return false;
@@ -892,6 +914,15 @@ function ValidateForm(passForm)
 				alert("WPA Cipher Suite Can't be empty.");
 				return false;
 			}
+				
+			
+			// for test plan 4.1.11 ; WPS2DOTX support	
+			// { AP_MODE=0, CLIENT_MODE=1, WDS_MODE=2, AP_WDS_MODE=3, AP_MESH_MODE=4, MESH_MODE=5}
+			if(wps_mode_old==0 || wps_mode_old==3){
+				if(!confirm("under WPA only or TKIP only,WPS2 daemon will be disabled")){
+					return false;
+				}
+			}
 		}
 		else if(enc_mode == 4) //WPA2 only
 		{
@@ -916,6 +947,16 @@ function ValidateForm(passForm)
 			{
 				alert("WPA2 Cipher Suite Can't be empty.");
 				return false;
+			}
+			// WPS2DOTX
+			if(wps_mode_old==0 || wps_mode_old==3){
+				if(tF.ciphersuite<% write(getIndex("wlan_idx")); %>[1].checked == false &&
+					 tF.wpa2ciphersuite<% write(getIndex("wlan_idx")); %>[1].checked == false )
+				{
+					if(!confirm("if TKIP only ; WPS2.0 will be disabled")){
+						return false;
+					}
+				}
 			}
 		}
 	}

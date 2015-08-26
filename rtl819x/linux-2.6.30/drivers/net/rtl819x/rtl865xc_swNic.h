@@ -210,7 +210,7 @@ int32 swNic_init(uint32 userNeedRxPkthdrRingCnt[],
  * -------------------------------------------------------------------*/
 void swNic_intHandler(uint32 intPending);
 int32 swNic_flushRxRingByPriority(int priority);
-int32 swNic_receive(rtl_nicRx_info *info, int retryCount);
+__MIPS16 __IRAM_FWD int32 swNic_receive(rtl_nicRx_info *info, int retryCount);
 int32 swNic_send(void *skb, void * output, uint32 len, rtl_nicTx_info *nicTx);
 //__MIPS16 
 int32 swNic_txDone(int idx);
@@ -266,7 +266,7 @@ struct ring_que {
 
 static inline void *UNCACHED_MALLOC(int size)
 {
-	return ((void *)(((uint32)kmalloc(size, GFP_KERNEL)) | UNCACHE_MASK));	
+	return ((void *)(((uint32)kmalloc(size, GFP_ATOMIC)) | UNCACHE_MASK));	
 }
 
 #endif /* _SWNIC_H */

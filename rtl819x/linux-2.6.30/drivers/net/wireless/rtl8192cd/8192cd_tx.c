@@ -454,8 +454,12 @@ static int dz_queue(struct rtl8192cd_priv *priv, struct stat_info *pstat, struct
 		else
 legacy_ps:
 #endif
-		skb_queue_tail(&pstat->dz_queue, pskb);
-		return TRUE;
+		if (pstat->dz_queue.qlen<NUM_TXPKT_QUEUE){
+			skb_queue_tail(&pstat->dz_queue, pskb);
+			return TRUE;
+		} else {
+			return FALSE;
+		}
 	}
 	else {	// Multicast or Broadcast
 		ret = enque(priv, &(priv->dz_queue.head), &(priv->dz_queue.tail),
@@ -968,7 +972,7 @@ int rtl8192cd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	SMP_LOCK_XMIT(x);
 
 #ifdef MCAST2UI_REFINE
-        memcpy(&skb->cb[10], skb->data, 6);
+	memcpy(&skb->cb[10], skb->data, 6);
 #endif
 
 	ret = __rtl8192cd_start_xmit(skb, dev, TX_NORMAL);
@@ -1460,7 +1464,7 @@ int mlcst2unicst(struct rtl8192cd_priv *priv, struct sk_buff *skb)
 			fwdCnt = priv->assoc_num;			
 		}else{
 			return FALSE;		
-	}
+		}
 #else
 		/*case: if M2U can't success then 
 		  forward by multicast(orig method) */ 
@@ -1832,9 +1836,13 @@ static void rtl8192cd_fill_fwinfo(struct rtl8192cd_priv *priv, struct tx_insn* t
 			}
 
 			//set Break
-			if(txcfg->pstat != priv->pshare->CurPstat){
+			if((txcfg->q_num >=1 && txcfg->q_num <=4)){
+				if((txcfg->pstat != priv->pshare->CurPstat[txcfg->q_num-1])) {
+					pdesc->Dword1 |= set_desc(TX_BK);
+					priv->pshare->CurPstat[txcfg->q_num-1] = txcfg->pstat;
+				}				
+			} else {
 				pdesc->Dword1 |= set_desc(TX_BK);
-				priv->pshare->CurPstat = txcfg->pstat;
 			}
 		}
 
@@ -1897,8 +1905,7 @@ static void rtl8192cd_fill_fwinfo(struct rtl8192cd_priv *priv, struct tx_insn* t
 					(txcfg->pstat) && (txcfg->pstat->MIMO_ps & _HT_MIMO_PS_DYNAMIC_) &&
 					is_MCS_rate(txcfg->tx_rate) && ((txcfg->tx_rate & 0x7f)>7))
 				{	// when HT MIMO Dynamic power save is set and rate > MCS7, RTS is needed
-					if (!TP_LOW)
-						pdesc->Dword4 |=set_desc(TX_RtsEn);
+					pdesc->Dword4 |=set_desc(TX_RtsEn);
 				} else {
 					/*
 					 * Auto rts mode, use rts depends on packet length and packet tx time
@@ -3277,14 +3284,17 @@ void rtl8192cd_beq_timer(unsigned long task_priv)
 {
     struct stat_info        *pstat = (struct stat_info *)task_priv;
     struct sk_buff *skb = NULL;
+	struct rtl8192cd_priv *priv = (struct rtl8192cd_priv *)skb->dev->priv;
+	unsigned long x;
 
-    while(1)
-    {
+    while(1) {
     	skb = skb_dequeue(&pstat->swq.be_queue);
 
         if (skb == NULL)
         	break;
+		SAVE_INT_AND_CLI(x);
         __rtl8192cd_start_xmit_out(skb, pstat);
+		RESTORE_INT(x);
     }
 	pstat->swq.beq_empty = 0;
 }
@@ -3293,14 +3303,17 @@ void rtl8192cd_bkq_timer(unsigned long task_priv)
 {
     struct stat_info        *pstat = (struct stat_info *)task_priv;
     struct sk_buff *skb = NULL;
+	struct rtl8192cd_priv *priv = (struct rtl8192cd_priv *)skb->dev->priv;
+	unsigned long x;
 
-    while(1)
-    {
+    while(1) {
     	skb = skb_dequeue(&pstat->swq.bk_queue);
 
         if (skb == NULL)
         	break;
+		SAVE_INT_AND_CLI(x);
         __rtl8192cd_start_xmit_out(skb, pstat);
+		RESTORE_INT(x);
     }
     pstat->swq.bkq_empty = 0;
 }
@@ -3309,14 +3322,17 @@ void rtl8192cd_viq_timer(unsigned long task_priv)
 {
     struct stat_info        *pstat = (struct stat_info *)task_priv;
     struct sk_buff *skb = NULL;
+	struct rtl8192cd_priv *priv = (struct rtl8192cd_priv *)skb->dev->priv;
+	unsigned long x;
 
-    while(1)
-    {
+    while(1) {
     	skb = skb_dequeue(&pstat->swq.vi_queue);
 
         if (skb == NULL)
         	break;
+		SAVE_INT_AND_CLI(x);
         __rtl8192cd_start_xmit_out(skb, pstat);
+		RESTORE_INT(x);
     }
     pstat->swq.viq_empty = 0;
 }
@@ -3325,14 +3341,17 @@ void rtl8192cd_voq_timer(unsigned long task_priv)
 {
     struct stat_info        *pstat = (struct stat_info *)task_priv;
     struct sk_buff *skb = NULL;
+	struct rtl8192cd_priv *priv = (struct rtl8192cd_priv *)skb->dev->priv;
+	unsigned long x;
 
-    while(1)
-    {
+    while(1) {
     	skb = skb_dequeue(&pstat->swq.vo_queue);
 
         if (skb == NULL)
         	break;
+		SAVE_INT_AND_CLI(x);
         __rtl8192cd_start_xmit_out(skb, pstat);
+		RESTORE_INT(x);
     }
     pstat->swq.voq_empty = 0;
 }
@@ -3531,7 +3550,7 @@ int __rtl8192cd_start_xmit(struct sk_buff *skb, struct net_device *dev, int tx_f
 
 	if (skb->len < 15)
     {
-        DEBUG_ERR("TX DROP: SKB len small:%d\n", skb->len);
+        _DEBUG_ERR("TX DROP: SKB len small:%d\n", skb->len);
 #ifdef SW_TX_QUEUE
         goto free_and_stoptx;
 #else
@@ -4483,12 +4502,16 @@ int rtl8192cd_signin_txdesc_shortcut(struct rtl8192cd_priv *priv, struct tx_insn
 //		pdesc->Dword1 |= set_desc(txcfg->pstat->aid & TX_MACIDMask);
 
 	//set Break
-	if (txcfg->pstat != priv->pshare->CurPstat) {
+	if((txcfg->q_num >=1 && txcfg->q_num <=4)){
+		if((txcfg->pstat != priv->pshare->CurPstat[txcfg->q_num-1])) {
+			pdesc->Dword1 |= set_desc(TX_BK);
+			priv->pshare->CurPstat[txcfg->q_num-1] = txcfg->pstat;
+		}
+		else
+			pdesc->Dword1 &= set_desc(~TX_BK); // clear it		
+	} else {
 		pdesc->Dword1 |= set_desc(TX_BK);
-		priv->pshare->CurPstat = txcfg->pstat;
-	}
-	else
-		pdesc->Dword1 &= set_desc(~TX_BK); // clear it
+	}		
 
 	if (txcfg->one_txdesc) {
 		pdesc->Dword0 = set_desc((get_desc(pdesc->Dword0) & 0xffff0000) |
@@ -5637,6 +5660,12 @@ void rtl8192cd_tx_dsr(unsigned long task_priv)
 
 	if (!phw)
 		return;
+
+#ifdef PCIE_POWER_SAVING
+	if ((priv->pwr_state == L2) || (priv->pwr_state == L1)) {
+		return;
+	}
+#endif
 
 	SAVE_INT_AND_CLI(flags);
 	SMP_LOCK(flags);

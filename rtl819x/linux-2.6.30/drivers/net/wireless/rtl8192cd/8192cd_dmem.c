@@ -245,7 +245,7 @@ static void *rtl8192cd_dmem_pmib_alloc(void *miscInfo)
 	}
 
 	/* Allocate from externel memory if speedup PMIB is exhausted */
-	return kmalloc(sizeof(struct wifi_mib), GFP_KERNEL);
+	return kmalloc(sizeof(struct wifi_mib), GFP_ATOMIC);
 
 }
 

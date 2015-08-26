@@ -405,7 +405,7 @@ out:
 }
 
 
-struct mfc_cache *ipmr_cache_find(struct net *net,
+static struct mfc_cache *ipmr_cache_find(struct net *net,
 					 __be32 origin,
 					 __be32 mcastgrp);
 

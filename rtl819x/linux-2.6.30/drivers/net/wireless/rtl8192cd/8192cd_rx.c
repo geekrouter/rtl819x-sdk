@@ -210,6 +210,7 @@ static __inline__ void translate_rssi_sq(struct rtl8192cd_priv *priv, struct rx_
 	u1Byte				EVM, PWDB_ALL;
 	u4Byte				RSSI;
 	u1Byte				isCCKrate=0, report;
+	unsigned int			ofdm_max_rssi=0, ofdm_min_rssi=0xff;
 
 	/* 2007/07/04 MH For OFDM RSSI. For high power or not. */
 	//static u1Byte		check_reg824 = 0;
@@ -253,46 +254,112 @@ static __inline__ void translate_rssi_sq(struct rtl8192cd_priv *priv, struct rx_
 		if (!priv->pshare->phw->reg824_bit9) {
 			report = pCck_buf->cck_agc_rpt & 0xc0;
 			report = report>>6;
-			switch (report) {
-			//Fixed by Jacken from Bryant 2008-03-20
-			//Original value is -38 , -26 , -14 , -2
-			//Fixed value is -35 , -23 , -11 , 6
-			case 0x3:
-				rx_pwr_all = -35 - (pCck_buf->cck_agc_rpt & 0x3e);
-				break;
-			case 0x2:
-				rx_pwr_all = -23 - (pCck_buf->cck_agc_rpt & 0x3e);
-				break;
-			case 0x1:
-				rx_pwr_all = -11 - (pCck_buf->cck_agc_rpt & 0x3e);
-				break;
-			case 0x0:
-				rx_pwr_all = 8 - (pCck_buf->cck_agc_rpt & 0x3e);
-				break;
+
+			if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)) {
+				switch (report) {
+				case 0x3:
+					rx_pwr_all = -46 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				case 0x2:
+					rx_pwr_all = -26 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				case 0x1:
+					rx_pwr_all = -12 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				case 0x0:
+					rx_pwr_all = 16 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				}
+			} else {
+				switch (report) {
+				//Fixed by Jacken from Bryant 2008-03-20
+				//Original value is -38 , -26 , -14 , -2
+				//Fixed value is -35 , -23 , -11 , 6
+				case 0x3:
+					rx_pwr_all = -35 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				case 0x2:
+					rx_pwr_all = -23 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				case 0x1:
+					rx_pwr_all = -11 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				case 0x0:
+					rx_pwr_all = 8 - (pCck_buf->cck_agc_rpt & 0x3e);
+					break;
+				}
 			}
 		} else {
 			report = pCck_buf->cck_agc_rpt & 0x60;
 			report = report>>5;
-			switch (report) {
-			//Fixed by Jacken from Bryant 2008-03-20
-			case 0x3:
-				rx_pwr_all = -35 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
-				break;
-			case 0x2:
-				rx_pwr_all = -23 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
-				break;
-			case 0x1:
-				rx_pwr_all = -11 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
-				break;
-			case 0x0:
-				rx_pwr_all = -8 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
-				break;
+
+			if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)) {
+				switch (report) {
+				case 0x3:
+					rx_pwr_all = -46 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1) ;
+					break;
+				case 0x2:
+					rx_pwr_all = -26 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
+					break;
+				case 0x1:
+					rx_pwr_all = -12 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1) ;
+					break;
+				case 0x0:
+					rx_pwr_all = 16 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1) ;
+					break;
+				}
+			} else {
+				switch (report) {
+				//Fixed by Jacken from Bryant 2008-03-20
+				case 0x3:
+					rx_pwr_all = -35 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
+					break;
+				case 0x2:
+					rx_pwr_all = -23 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
+					break;
+				case 0x1:
+					rx_pwr_all = -11 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
+					break;
+				case 0x0:
+					rx_pwr_all = -8 - ((pCck_buf->cck_agc_rpt & 0x1f)<<1);
+					break;
+				}
 			}
 		}
 
 		PWDB_ALL = QueryRxPwrPercentage(rx_pwr_all);
-		pfrinfo->rssi = PWDB_ALL;
-		pfrinfo->rssi+=3;
+
+		if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)) {
+			if (priv->pshare->rf_ft_var.use_ext_lna) {
+				if (!(pCck_buf->cck_agc_rpt>>7))
+					PWDB_ALL = (PWDB_ALL>94)?100:(PWDB_ALL + 6);
+				else
+					PWDB_ALL = (PWDB_ALL<16)?0:(PWDB_ALL -16);
+
+				/* CCK Modification */
+				if (PWDB_ALL > 25 && PWDB_ALL <= 60)
+					PWDB_ALL += 6;
+/*
+				else if (PWDB_ALL <= 25)
+					PWDB_ALL += 8;
+*/
+			} else {
+				if (PWDB_ALL > 99)
+					PWDB_ALL -= 8;
+				else if (PWDB_ALL > 50 && PWDB_ALL <= 68)
+					PWDB_ALL += 4;
+			}
+
+			pfrinfo->rssi = PWDB_ALL;
+			if (priv->pshare->rf_ft_var.use_ext_lna)
+				pfrinfo->rssi+=10;
+		} else {
+			pfrinfo->rssi = PWDB_ALL;
+			pfrinfo->rssi+=3;
+		}
+
+		if (pfrinfo->rssi > 100)
+			pfrinfo->rssi = 100;
 
 		//
 		// (3) Get Signal Quality (EVM)
@@ -321,7 +388,10 @@ static __inline__ void translate_rssi_sq(struct rtl8192cd_priv *priv, struct rx_
 		// (1)Get RSSI for HT rate
 		//
 		for (i=RF92CD_PATH_A; i<RF92CD_PATH_MAX; i++) {
-			rx_pwr[i] = ((pOfdm_buf->trsw_gain_X[i]&0x3F)*2) - 106;
+			if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C))
+				rx_pwr[i] = ((pOfdm_buf->trsw_gain_X[i]&0x3F)*2) - 110;
+			else
+				rx_pwr[i] = ((pOfdm_buf->trsw_gain_X[i]&0x3F)*2) - 106;
 
 			//Get Rx snr value in DB
 			if (priv->pshare->rf_ft_var.rssi_dump) {
@@ -335,18 +405,47 @@ static __inline__ void translate_rssi_sq(struct rtl8192cd_priv *priv, struct rx_
 			RSSI = QueryRxPwrPercentage(rx_pwr[i]);
 			//total_rssi += RSSI;
 
+			if (((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)) 
+				&& (priv->pshare->rf_ft_var.use_ext_lna)) {
+				if ((pOfdm_buf->trsw_gain_X[i]>>7) == 1)
+					RSSI = (RSSI>94)?100:(RSSI + 6);
+				else
+					RSSI = (RSSI<16)?0:(RSSI -16);
+
+				if (RSSI <= 34 && RSSI >= 4)
+					RSSI -= 4;
+			}
+
 			/* Record Signal Strength for next packet */
 			//if(bPacketMatchBSSID)
 			{
 				pfrinfo->rf_info.mimorssi[i] = (u1Byte)RSSI;
+			}
+
+			if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)) {
+				if (RSSI > ofdm_max_rssi)
+					ofdm_max_rssi = RSSI;
+				if (RSSI < ofdm_min_rssi)
+					ofdm_min_rssi = RSSI;
 			}
 		}
 
 		//
 		// (2)PWDB, Average PWDB cacluated by hardware (for rate adaptive)
 		//
-		rx_pwr_all = (((pOfdm_buf->pwdb_all ) >> 1 )& 0x7f) -106;
-		PWDB_ALL = QueryRxPwrPercentage(rx_pwr_all);
+		if ((GET_CHIP_VER(priv) == VERSION_8192C)||(GET_CHIP_VER(priv) == VERSION_8188C)) {
+			if ((ofdm_max_rssi - ofdm_min_rssi) < 3)
+				PWDB_ALL = ofdm_max_rssi;
+			else if ((ofdm_max_rssi - ofdm_min_rssi) < 6)
+				PWDB_ALL = ofdm_max_rssi - 1;
+			else if ((ofdm_max_rssi - ofdm_min_rssi) < 10)
+				PWDB_ALL = ofdm_max_rssi - 2;
+			else 
+				PWDB_ALL = ofdm_max_rssi - 3;
+		} else {
+			rx_pwr_all = (((pOfdm_buf->pwdb_all ) >> 1 )& 0x7f) -106;
+			PWDB_ALL = QueryRxPwrPercentage(rx_pwr_all);
+		}
 
 		pfrinfo->rssi = PWDB_ALL;
 
@@ -1390,17 +1489,34 @@ int rx_shortcut(struct rtl8192cd_priv *priv, struct rx_frinfo *pfrinfo)
 	if (pstat && (pstat->rx_payload_offset > 0) &&
 		(GetFragNum(pframe) == 0) && (GetMFrag(pframe) == 0))
 	{
-		tpcache = GetTupleCache(pframe);
-		pos = GetSequence(pframe) & (TUPLE_WINDOW - 1);
-		if (tpcache == pstat->tpcache[pfrinfo->tid][pos]) {
-			priv->ext_stats.rx_decache++;
-			rtl_kfree_skb(priv, pfrinfo->pskb, _SKB_RX_);
-			SNMP_MIB_INC(dot11FrameDuplicateCount, 1);
-			return 0;
-		}
+		privacy = GetPrivacy(pframe); 
+        memcpy(da, pfrinfo->da, MACADDRLEN); 
+    
+#ifdef CLIENT_MODE 
+        if (IS_MCAST(da)) 
+        { 
+			tpcache = GetTupleCache(pframe); 
+            if (tpcache == pstat->tpcache_mcast) 
+            { 
+				priv->ext_stats.rx_decache++; 
+                rtl_kfree_skb(priv, pfrinfo->pskb, _SKB_RX_); 
+                SNMP_MIB_INC(dot11FrameDuplicateCount, 1); 
+                return 0; 
+            } 
+        } 
+        else 
+#endif 
+        { 
 
-		privacy = GetPrivacy(pframe);
-		memcpy(da, pfrinfo->da, MACADDRLEN);
+			tpcache = GetTupleCache(pframe);
+			pos = GetSequence(pframe) & (TUPLE_WINDOW - 1);
+			if (tpcache == pstat->tpcache[pfrinfo->tid][pos]) {
+				priv->ext_stats.rx_decache++;
+				rtl_kfree_skb(priv, pfrinfo->pskb, _SKB_RX_);
+				SNMP_MIB_INC(dot11FrameDuplicateCount, 1);
+				return 0;
+			}
+		}
 
 		// check wlan header
 		if ((pstat->rx_privacy == privacy) &&
@@ -1925,10 +2041,19 @@ static int rtl8192cd_rx_procNullPkt(struct rtl8192cd_priv *priv, struct rx_frinf
 // for AR5007 IOT ISSUE
 static void rtl8192cd_rx_handle_Spec_Null_Data(struct rtl8192cd_priv *priv, struct rx_frinfo *pfrinfo)
 {
-	unsigned char *sa = pfrinfo->sa;
-	struct stat_info *pstat = get_stainfo(priv, sa);
+	unsigned char *sa;
+	struct stat_info *pstat;
 	unsigned char *pframe = get_pframe(pfrinfo);
+	unsigned long flags;
 
+	SAVE_INT_AND_CLI(flags);
+	sa = pfrinfo->sa;
+	pstat = get_stainfo(priv, sa);
+	if (pstat==NULL) {
+		goto out;
+	}
+	
+	pframe = get_pframe(pfrinfo);
 	if ((!GetPwrMgt(pframe)) && (GetTupleCache(pframe) == 0) // because this is special case for AR5007, so use GetTupleCache with Seq-Num and Frag-Num, GetSequenceis also ok
 		 && (OPMODE & WIFI_AP_STATE) && (IS_BSSID(priv, GetAddr1Ptr(pframe))))
 	{
@@ -1939,6 +2064,8 @@ static void rtl8192cd_rx_handle_Spec_Null_Data(struct rtl8192cd_priv *priv, stru
 			for (j=0; j<TUPLE_WINDOW; j++)
 				pstat->tpcache[i][j] = 0xffff;
 	}
+out:
+	RESTORE_INT(flags);
 }
 
 
@@ -2693,6 +2820,12 @@ void rtl8192cd_rx_tkl_isr(unsigned long task_priv)
 	priv = (struct rtl8192cd_priv *)task_priv;
 
 //	printk("=====>> INSIDE rtl8192cd_rx_tkl_isr <<=====\n");
+
+#ifdef PCIE_POWER_SAVING
+	if ((priv->pwr_state == L2) || (priv->pwr_state == L1)) {
+		return;
+	}
+#endif
 
 #if defined(__LINUX_2_6__)
 	SMP_LOCK(x);
@@ -3698,17 +3831,31 @@ check_privacy:
 			privacy = get_sta_encrypt_algthm(priv, pstat);
 		}
 	}
-#endif
 
-	/*-------------------check retry-------------------*/
-	pos = GetSequence(pframe) & (TUPLE_WINDOW - 1);
-	if (GetTupleCache(pframe) == pstat->tpcache[pfrinfo->tid][pos]) {
-		priv->ext_stats.rx_decache++;
-		SNMP_MIB_INC(dot11FrameDuplicateCount, 1);
-		goto free_skb_in_defrag;
+	if (IS_MCAST(da)) 
+    { 
+		if (GetTupleCache(pframe) == pstat->tpcache_mcast) 
+        { 
+			priv->ext_stats.rx_decache++; 
+            SNMP_MIB_INC(dot11FrameDuplicateCount, 1); 
+            goto free_skb_in_defrag; 
+        } 
+        else 
+            pstat->tpcache_mcast = GetTupleCache(pframe); 
+    } 
+    else 
+#endif 	
+	{
+		/*-------------------check retry-------------------*/
+		pos = GetSequence(pframe) & (TUPLE_WINDOW - 1);
+		if (GetTupleCache(pframe) == pstat->tpcache[pfrinfo->tid][pos]) {
+			priv->ext_stats.rx_decache++;
+			SNMP_MIB_INC(dot11FrameDuplicateCount, 1);
+			goto free_skb_in_defrag;
+		}
+		else
+			pstat->tpcache[pfrinfo->tid][pos] = GetTupleCache(pframe);
 	}
-	else
-		pstat->tpcache[pfrinfo->tid][pos] = GetTupleCache(pframe);
 
 	/*-------------------------------------------------------*/
 	/*-----------insert MPDU-based decrypt below-------------*/
@@ -4647,7 +4794,14 @@ static int process_datafrme(struct rtl8192cd_priv *priv, struct rx_frinfo *pfrin
 mcast_netif_rx:
 #endif
 
-			rtl_netif_rx(priv, pskb, pstat);
+			if ((priv->pmib->dot11BssType.net_work_type & WIRELESS_11N) &&
+				priv->pmib->reorderCtrlEntry.ReorderCtrlEnable) {
+				*(unsigned int *)&(pfrinfo->pskb->cb[4]) = 0;
+				if (reorder_ctrl_check(priv, pstat, pfrinfo))
+					rtl_netif_rx(priv, pfrinfo->pskb, pstat);
+			}
+			else
+				rtl_netif_rx(priv, pskb, pstat);
 		}
 		else
 		{

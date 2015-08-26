@@ -94,9 +94,11 @@ config IP_FIB_HASH
 config RTL_IPTABLES_FAST_PATH
         tristate "Realtek IPTables Fast Path"
         default y
-config RTL_FAST_BRIDGE
-	tristate "Realtek Bridge Fast Path"
-	default y
+
+config FAST_PATH_SPI_ENABLED
+	bool "Realtek Fastpath SPI(stateful packet inspection) support"
+	depends on RTL_IPTABLES_FAST_PATH
+	default n
 
 config IP_FIB_TRIE_STATS
 	bool "FIB TRIE statistics"

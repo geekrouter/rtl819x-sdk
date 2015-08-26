@@ -120,7 +120,7 @@
 
 #define CONFIG_RTL_CUSTOM_PASSTHRU
 #if defined(CONFIG_RTL_CUSTOM_PASSTHRU)
-//#define CONFIG_RTL_CUSTOM_PASSTHRU_PPPOE
+#define CONFIG_RTL_CUSTOM_PASSTHRU_PPPOE
 
 #define IP6_PASSTHRU_MASK 0x1
 #if	defined(CONFIG_RTL_CUSTOM_PASSTHRU_PPPOE)
@@ -203,13 +203,15 @@
 #define PCI_CONFIG_BASE0			(wdev->conf_addr+0x10)
 #define PCI_CONFIG_BASE1			(wdev->conf_addr+0x18)
 
+#define MAX_NUM(_x_, _y_)	(((_x_)>(_y_))? (_x_) : (_y_))
+#define MIN_NUM(_x_, _y_)	(((_x_)<(_y_))? (_x_) : (_y_))
 
 //-------------------------------------------------------------
 // Driver version information
 //-------------------------------------------------------------
 #define DRV_VERSION_H	1
-#define DRV_VERSION_L	4
-#define DRV_RELDATE		"2010-12-22"
+#define DRV_VERSION_L	6
+#define DRV_RELDATE		"2011-07-18"
 #ifdef LINUX_2_6_22_
 #define DRV_NAME		"RTL8192C/RTL8188C"
 #else
@@ -281,12 +283,18 @@
 //-------------------------------------------------------------
 // PCIe power saving function
 //-------------------------------------------------------------
-#ifndef CONFIG_RTL_8198
 #ifdef CONFIG_PCIE_POWER_SAVING
-#if	!defined(CONFIG_RTL_92D_SUPPORT) && !defined(CONFIG_NET_PCI) && !defined(CONFIG_RTL_8196CS)
+#if !defined(CONFIG_NET_PCI) && !defined(CONFIG_RTL_8196CS)
 #define PCIE_POWER_SAVING
 #endif
+#if	defined(CONFIG_RTL_92D_SUPPORT) && defined(CONFIG_RTL_92C_SUPPORT)
+#undef PCIE_POWER_SAVING
 #endif
+#if	defined(CONFIG_RTL_92D_SUPPORT) && defined(CONFIG_RTL_8198)
+#undef PCIE_POWER_SAVING
+#endif
+
+
 #endif
 
 #ifdef _SINUX_
@@ -301,6 +309,31 @@
 #ifdef PCIE_POWER_SAVING_DEBUG
 	#define PCIE_L2_ENABLE
 #endif
+
+#define CONFIG_SLOT0H	0xb8b00000
+#define CONFIG_SLOT0S	0xb8b10000
+#define CONFIG_SLOT1H	0xb8b20000
+#define CONFIG_SLOT1S	0xb8b30000
+
+
+#if defined(CONFIG_RTL_8198)
+#define CFG_92C_SLOTH		CONFIG_SLOT0H
+#define CFG_92C_SLOTS		CONFIG_SLOT0S
+#if (RTL_USED_PCIE_SLOT==1)
+#define CFG_92D_SLOTH		CONFIG_SLOT1H
+#define CFG_92D_SLOTS		CONFIG_SLOT1S
+#else
+#define CFG_92D_SLOTH		CONFIG_SLOT0H
+#define CFG_92D_SLOTS		CONFIG_SLOT0S
+#endif
+#elif defined(CONFIG_RTL_8196C)
+#define CFG_92C_SLOTH		CONFIG_SLOT0H
+#define CFG_92C_SLOTS		CONFIG_SLOT0S
+#define CFG_92D_SLOTH		CONFIG_SLOT0H
+#define CFG_92D_SLOTS		CONFIG_SLOT0S
+#endif
+
+
 #endif
 
 
@@ -512,7 +545,25 @@
 // Wifi Simple Config support
 //-------------------------------------------------------------
 #define WIFI_SIMPLE_CONFIG
+/* WPS2DOTX   */
+#define WPS2DOTX
+#define OUI_LEN					4
 
+#ifdef WPS2DOTX
+#define SUPPORT_PROBE_REQ_REASSEM	//for AP mode
+#define SUPPORT_PROBE_RSP_REASSEM	// for STA mode
+#define WPS2DOTX_DEBUG
+#endif
+
+#ifdef	WPS2DOTX_DEBUG	  //0614 for wps2.0  trace
+#define SECU_DEBUG(fmt, args...)  printk("[secu]%s %d:"fmt, __FUNCTION__,__LINE__, ## args)
+#define SME_DEBUG(fmt, args...) printk("[sme]%s %d:"fmt,__FUNCTION__ , __LINE__ , ## args)
+
+#else
+#define SECU_DEBUG(fmt, args...)
+#define SME_DEBUG(fmt, args...) 
+#endif
+/* WPS2DOTX   */
 
 //-------------------------------------------------------------
 // Support Multiple BSSID
@@ -596,7 +647,7 @@
 //Support IP multicast->unicast
 //-------------------------------------------------------------
 #define SUPPORT_TX_MCAST2UNI
-#define MCAST2UI_REFINE
+//#define MCAST2UI_REFINE
 
 #ifdef CLIENT_MODE
 #define SUPPORT_RX_UNI2MCAST
@@ -1109,7 +1160,11 @@
 //-------------------------------------------------------------
 #ifdef CONFIG_RTL_92D_SUPPORT
 #define SW_LCK_92D
-//#define TXPWR_LMT
+
+#ifdef CONFIG_TXPWR_LMT
+#define TXPWR_LMT
+#endif
+
 #define RX_GAIN_TRACK_92D
 //#define CONFIG_RTL_NOISE_CONTROL
 #ifdef CONFIG_RTL_92D_DMDP
@@ -1458,14 +1513,14 @@
 
 #define ROAMING_DECISION_PERIOD_INFRA	5
 #define ROAMING_DECISION_PERIOD_ADHOC	10
-#define ROAMING_DECISION_PERIOD_ARRAY (ROAMING_DECISION_PERIOD_ADHOC+1)
+#define ROAMING_DECISION_PERIOD_ARRAY 	(MAX_NUM(ROAMING_DECISION_PERIOD_ADHOC,ROAMING_DECISION_PERIOD_INFRA)+1)
 #define ROAMING_THRESHOLD		1	// roaming will be triggered when rx
 									// beacon percentage is less than the value
 #define FAST_ROAMING_THRESHOLD	40
 
 /* below is for security.h  */
 #define MAXDATALEN		1560
-#define MAXQUEUESIZE	4
+#define MAXQUEUESIZE	8	//WPS2DOTX
 #define MAXRSNIELEN		128
 #define E_DOT11_2LARGE	-1
 #define E_DOT11_QFULL	-2
@@ -1497,7 +1552,7 @@
 
 #ifdef RX_BUFFER_GATHER
 #ifdef __LINUX_2_6__
-#define MAX_SKB_BUF     2260
+#define MAX_SKB_BUF     2280
 #else
 #define MAX_SKB_BUF     2048
 #endif
@@ -1520,7 +1575,7 @@
 
 #define AGC_TAB_SIZE	1600
 #define PHY_REG_SIZE	2048
-#define MAC_REG_SIZE	1024
+#define MAC_REG_SIZE	1200
 #ifdef CONFIG_RTL_92D_SUPPORT
 #define PHY_REG_PG_SIZE 2560
 #else

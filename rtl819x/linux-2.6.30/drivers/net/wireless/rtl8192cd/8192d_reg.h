@@ -28,7 +28,7 @@
 /*
  *	Register 0x2C overlaps Project RTL8192c
  */
-//#define		MAC_PHY_CTRL_T					0x2C	// DMDP,SMSP,DMSP contrl
+#define		MAC_PHY_CTRL_T					0x2C	// DMDP,SMSP,DMSP contrl
 #define		MAC_PHY_CTRL_MP					0xF8	// DMDP,SMSP,DMSP contrl
 
 #define		TXDMA_DBG						0x218	// TXDMA debug port

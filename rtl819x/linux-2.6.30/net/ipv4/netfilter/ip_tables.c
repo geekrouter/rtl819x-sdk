@@ -63,6 +63,9 @@ LIST_HEAD(rtl865x_iptRule2Acl_def_rule_list);
 static unsigned int in_def_action = RTL865X_ACL_PERMIT;
 static unsigned int out_def_action = RTL865X_ACL_PERMIT;
 int establish_rule_permit = 0;
+
+extern int get_hookNum(struct ipt_entry *e, unsigned char *base, const unsigned int valid_hooks,const unsigned int *hook_entries);
+
 #endif
 
 /*#define DEBUG_IP_FIREWALL*/

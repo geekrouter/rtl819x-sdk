@@ -71,7 +71,7 @@ static void bsp_ictl_irq_dispatch(void)
 		do_IRQ(BSP_UART1_IRQ);
 	else if (pending & BSP_TC1_IP)
 		do_IRQ(BSP_TC1_IRQ);
-	#if defined( CONFIG_RTK_VOIP )
+	#if defined( CONFIG_RTK_VOIP ) || defined(CONFIG_PCIE_POWER_SAVING)
 	else if (pending & BSP_GPIO_ABCD_IP)
 		do_IRQ(BSP_GPIO_ABCD_IRQ);
 	else if (pending & BSP_GPIO_EFGH_IP)

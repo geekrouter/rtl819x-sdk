@@ -1954,9 +1954,9 @@ out:
 			Receiver routines
   =======================================================================*/
 
-__DRAM_FWD int netdev_max_backlog __read_mostly = 512;	//1000;
-__DRAM_FWD int netdev_budget __read_mostly = 128;	//300;
-__DRAM_FWD int weight_p __read_mostly = 128;		//64;            /* old backlog weight */
+int netdev_max_backlog __read_mostly = 512;	//1000;
+int netdev_budget __read_mostly = 128;	//300;
+int weight_p __read_mostly = 128;		//64;            /* old backlog weight */
 
 DEFINE_PER_CPU(struct netif_rx_stats, netdev_rx_stat) = { 0, };
 
@@ -2286,7 +2286,7 @@ int netif_receive_skb(struct sk_buff *skb)
 #endif
 
 	#if	defined(CONFIG_RTL_819X)
-	if (rtl_netif_receive_skb_hooks(skb)==RTL_PS_HOOKS_RETURN)
+	if (rtl_netif_receive_skb_hooks(&skb)==RTL_PS_HOOKS_RETURN)
 		return NET_RX_SUCCESS;
 	#endif
 

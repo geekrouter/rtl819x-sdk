@@ -736,11 +736,20 @@ int setinit(int argc, char** argv)
 #if defined(CONFIG_RTL_92D_SUPPORT)
 	int wispWanId=0;
 #endif
-	up_mib_value();
+	int reinit=1;
+
 
 	if(isFileExist(SET_TIME)==0){
 		RunSystemCmd(NULL_FILE, "flash", "settime", NULL_STR);
 	}
+
+	if(isFileExist(REINIT_FILE)==0){
+		up_mib_value();
+		RunSystemCmd(REINIT_FILE, "echo", "1", NULL_STR);
+		reinit = 0;
+	}
+	else
+		reinit = 1;
 
 #ifdef CONFIG_RTL_802_1X_CLIENT_SUPPORT
 	if((isFileExist(RS_USER_CERT_5G)==0) && (isFileExist(RS_ROOT_CERT_5G)==0) &&  (isFileExist(RS_USER_CERT_2G)==0) && (isFileExist(RS_ROOT_CERT_2G)==0)){
@@ -807,8 +816,15 @@ int setinit(int argc, char** argv)
 			
 		sprintf(br_interface, "%s", "br0");
 #if defined(CONFIG_POCKET_ROUTER_SUPPORT)
+		//if(opmode != 0)
+		#ifdef RTK_USB3G
+    		if((wan_dhcp_mode == USB3G) || (opmode != 0))
+			sprintf(br_lan1_interface, "%s" , "eth0");
+		else
+		#endif
 		if(opmode != 0)
 			sprintf(br_lan1_interface, "%s" , "eth0");
+			
 #else
 		sprintf(br_lan1_interface, "%s" , "eth0");
 #endif
@@ -861,48 +877,47 @@ int setinit(int argc, char** argv)
 	if(wlan_support==0)
 		memset(wlan_interface, 0x00, sizeof(wlan_interface));
 /* set interface name  end*/			
-	
+#if defined(CONFIG_POCKET_AP_SUPPORT) && defined(HOME_GATEWAY)
 	sprintf(tmp_args,"%s", argv[3]);
-	if(strcmp(tmp_args, "wlan_app") != 0)
+	if( (strcmp(tmp_args, "wlan_app") != 0) && (reinit == 1))
 	{
 		clean_process(opmode,wan_dhcp_mode,gateway, enable_wan, br_interface, wlan_interface, wan_interface);
-	}
 	
-	
-	/*init wlan interface*/
-	if (wlan_support != 0)
-	{
-		int br_wlan_block=0;
-		memset(wlan_interface, 0x00, sizeof(wlan_interface));
-		for(i=0;i<NUM_WLAN_INTERFACE;i++)
+		/*init wlan interface*/
+		if (wlan_support != 0)
 		{
-			int wlan_disable = 1;			
-			unsigned char wlan_name[10];
-			memset(wlan_name,0x00,sizeof(wlan_name));
-			sprintf(wlan_name, "wlan%d",i);
-			if(SetWlan_idx(wlan_name))
-			{			
-				apmib_get( MIB_WLAN_WLAN_DISABLED, (void *)&wlan_disable);	  
+			int br_wlan_block=0;
+			memset(wlan_interface, 0x00, sizeof(wlan_interface));
+			for(i=0;i<NUM_WLAN_INTERFACE;i++)
+			{
+				int wlan_disable = 1;			
+				unsigned char wlan_name[10];
+				memset(wlan_name,0x00,sizeof(wlan_name));
+				sprintf(wlan_name, "wlan%d",i);
+				if(SetWlan_idx(wlan_name))
+				{			
+					apmib_get( MIB_WLAN_WLAN_DISABLED, (void *)&wlan_disable);	  
 
 				
-				if(wlan_disable == 1)
-				{
-					RunSystemCmd(NULL_FILE, "iwpriv", wlan_name, "radio_off", NULL_STR);					
-				}
-				else
-				{
-					if(wlan_interface[0]==0x00)
-						sprintf(wlan_interface, "%s", wlan_name);
+					if(wlan_disable == 1)
+					{
+						RunSystemCmd(NULL_FILE, "iwpriv", wlan_name, "radio_off", NULL_STR);					
+					}
 					else
 					{
-						sprintf(tmp_args, " %s", wlan_name);
-						strcat(wlan_interface, tmp_args); 
-					}							
+						if(wlan_interface[0]==0x00)
+							sprintf(wlan_interface, "%s", wlan_name);
+						else
+						{
+							sprintf(tmp_args, " %s", wlan_name);
+							strcat(wlan_interface, tmp_args); 
+						}							
+					}
 				}
-			}
-		}				
+			}				
+		}
 	}
-	
+#endif	//#if defined(CONFIG_POCKET_AP_SUPPORT) && defined(HOME_GATEWAY)
 /*currently, we just support init gw/ap all */	
 	sprintf(tmp_args,"%s", argv[3]);  
 	
@@ -919,10 +934,18 @@ int setinit(int argc, char** argv)
 		start_wlanapp(0);
 		return 0;
 	}
-	clean_process(opmode,wan_dhcp_mode,gateway, enable_wan, br_interface, wlan_interface, wan_interface);
+
 	/*save the last wan type*/ /*no this operate in shell script*/
 	sprintf(tmp_args, "%d", wan_dhcp_mode);
 	RunSystemCmd("/var/system/last_wan", "echo", tmp_args, NULL_STR);
+
+#if defined(CONFIG_POCKET_ROUTER_SUPPORT)
+	clean_process(opmode,wan_dhcp_mode,gateway, enable_wan, br_interface, wlan_interface, wan_interface);
+#else
+	if(reinit == 1)
+		clean_process(opmode,wan_dhcp_mode,gateway, enable_wan, br_interface, wlan_interface, wan_interface);
+#endif
+
 	RunSystemCmd(NULL_FILE, "ifconfig", "eth0", "down", NULL_STR);
 	RunSystemCmd(NULL_FILE, "ifconfig", "eth1", "down", NULL_STR);
 	RunSystemCmd(NULL_FILE, "ifconfig", "peth0", "down", NULL_STR);

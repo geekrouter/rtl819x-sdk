@@ -996,7 +996,7 @@ static char igmp_type_check(struct sk_buff *skb, unsigned char *gmac,unsigned in
 	struct igmphdr *igmph;
 	int i;
 	unsigned int groupAddr=0;// add  for fit igmp v3
-
+	*moreFlag=0;
 	/* check IP header information */
 	iph=(struct iphdr *)skb_network_header(skb);
 	hdrlen = iph->ihl << 2;
@@ -1012,7 +1012,7 @@ static char igmp_type_check(struct sk_buff *skb, unsigned char *gmac,unsigned in
 	/* parsing the igmp packet */
 	igmph = (struct igmphdr *)((u8*)iph+hdrlen);
 
-	*moreFlag=0;
+	
 	
 	if ((igmph->type==IGMP_HOST_MEMBERSHIP_REPORT) ||
 	    (igmph->type==IGMPV2_HOST_MEMBERSHIP_REPORT)) 

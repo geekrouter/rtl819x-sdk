@@ -14,8 +14,8 @@
 #define _8192CD_DEBUG_H_
 
 #if 1
-#define	_MESH_MOD_	//plus add 0119
-#define printMac(da)	printk("%02X:%02X:%02X:%02X:%02X:%02X   ",  0xff&*(da), 0xff&*(da+1), 0xff&*(da+2), 0xff&*(da+3), 0xff&*(da+4), 0xff&*(da+5));
+//#define	_MESH_MOD_	
+#define printMac(da)	printk("%02X:%02X:%02X:%02X:%02X:%02X\n",  0xff&*(da), 0xff&*(da+1), 0xff&*(da+2), 0xff&*(da+3), 0xff&*(da+4), 0xff&*(da+5));
 
 #define printMac4(pframe) 		{\
 		 printMac(GetAddr1Ptr(pframe));\
@@ -59,6 +59,7 @@ enum _module_define_ {
 	_MIB_=			0x00008000,
 	_MESH_=			0x00010000,	//plus add 0119
 	_WPS_ =			0x00020000,	
+	_DHW_ = 		0x00040000,
 };
 
 #if defined(_8192CD_OSDEP_C_)
@@ -84,6 +85,10 @@ enum _module_define_ {
 #elif defined(_8192CD_HW_C_)
 	#define _MODULE_DEFINE _HW_
 	#define _MODULE_NAME	"hw"
+
+#elif defined(_8192D_HW_C_)
+	#define _MODULE_DEFINE _DHW_
+	#define _MODULE_NAME	"dhw"
 
 #elif defined(_8192CD_SECURITY_C_)
 	#define _MODULE_DEFINE _SECURITY_

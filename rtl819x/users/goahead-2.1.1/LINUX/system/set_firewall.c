@@ -110,6 +110,9 @@ int set_voip_parameter(char* pInterface){
 	char rtp_port[20]={0};
 	char sip_port[10]={0};
 	int index;
+	#ifdef CONFIG_RTL_HARDWARE_NAT
+	int ivalue = 0;	
+	#endif
 	voipCfgParam_t  voipCfgParam;
 
 
@@ -137,8 +140,15 @@ int set_voip_parameter(char* pInterface){
 
 	#ifdef CONFIG_RTL_HARDWARE_NAT
 		//printf("hw_nat %d \n", voipCfgParam.hwnat_enable);
+		apmib_get(MIB_SUBNET_MASK,(void*)&ivalue);
+		
 		if(voipCfgParam.hwnat_enable)
-			RunSystemCmd("/proc/hw_nat", "echo", "1", NULL_STR);
+		{
+			if((ivalue&HW_NAT_LIMIT_NETMASK)!=HW_NAT_LIMIT_NETMASK)
+				RunSystemCmd("/proc/hw_nat", "echo", "0", NULL_STR);
+			else
+				RunSystemCmd("/proc/hw_nat", "echo", "1", NULL_STR);				
+		}
 		else
 			RunSystemCmd("/proc/hw_nat", "echo", "0", NULL_STR);
 	#endif
@@ -757,6 +767,9 @@ int setFirewallIptablesRules(int argc, char** argv)
 	int hw_nat_support=0;
 	int my_wan_type = 0;
 	char wan_type[8];
+#ifdef CONFIG_RTL_HW_NAPT
+	int ivalue = 0; 
+#endif
 
 	printf("Init Firewall Rules....\n");
 	memset(WanPhyIpAddr,'\0',30);
@@ -839,7 +852,6 @@ int setFirewallIptablesRules(int argc, char** argv)
 	RunSystemCmd("/proc/filter_table", "echo", "flush", NULL_STR);
 	RunSystemCmd("/proc/filter_table", "echo", "init", "3",  NULL_STR);
 #endif
-
 	if(intVal !=0 && intVal_num>0){
 //		RunSystemCmd("/proc/url_filter", "echo", " ", NULL_STR);
 		setURLFilter();
@@ -856,13 +868,23 @@ int setFirewallIptablesRules(int argc, char** argv)
 #endif
 #if defined(CONFIG_RTL_HW_NAPT)
 		if(opmode==0){
-			RunSystemCmd("/proc/hw_nat", "echo", "1", NULL_STR);//enable h/w nat when url filter disable
+		apmib_get(MIB_SUBNET_MASK,(void*)&ivalue);
+		if((ivalue&HW_NAT_LIMIT_NETMASK)!=HW_NAT_LIMIT_NETMASK)
+		{
+				RunSystemCmd("/proc/hw_nat", "echo", "0", NULL_STR);
+		}
+			else
+			{
+				RunSystemCmd("/proc/hw_nat", "echo", "1", NULL_STR);//enable h/w nat when url filter disable
+			}
 		}
 #endif
 
 	}
 
 #if defined(CONFIG_RTL_HW_NAPT)
+	
+	
 	RunSystemCmd("/proc/hw_nat", "echo", "9", NULL_STR);
 	my_wan_type = 0;
 	my_wan_type = wan_dhcp + 80;

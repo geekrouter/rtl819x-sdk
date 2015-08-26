@@ -254,7 +254,7 @@ typedef struct _ps_drv_netif_mapping_s
 int32 rtl865x_changeOpMode(int mode);
 
 #if defined(CONFIG_RTL_ETH_PRIV_SKB)
-int is_rtl865x_eth_priv_buf(unsigned char *head);
+__MIPS16 __IRAM_FWD int is_rtl865x_eth_priv_buf(unsigned char *head);
 void free_rtl865x_eth_priv_buf(unsigned char *head);
 #endif
 
@@ -265,9 +265,10 @@ int rtl_del_ps_drv_netif_mapping(struct net_device *dev);
 #if defined(CONFIG_RTK_VLAN_SUPPORT) && defined(CONFIG_RTK_VLAN_FOR_CABLE_MODEM)
 extern struct net_device* get_dev_by_vid(int vid);
 #endif
-extern struct net_device *get_shortcut_dev(unsigned char *da);
+extern __MIPS16 struct net_device *get_shortcut_dev(unsigned char *da);
 #define CONFIG_RTL_NIC_HWSTATS
 
 int32 rtl865x_changeOpMode(int mode);
+int  rtl865x_reChangeOpMode (void);
 
 #endif

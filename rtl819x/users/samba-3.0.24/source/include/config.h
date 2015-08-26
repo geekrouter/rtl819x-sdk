@@ -595,7 +595,7 @@
 /* #undef HAVE_IFACE_AIX */
 
 /* Whether iface ifconf is available */
-/* #undef HAVE_IFACE_IFCONF */
+#define  HAVE_IFACE_IFCONF 1
 
 /* Whether iface ifreq is available */
 /* #undef HAVE_IFACE_IFREQ */

@@ -250,12 +250,9 @@ void rtl8192cd_chr_exit(void);
 struct rtl8192cd_priv *rtl8192cd_chr_reg(unsigned int minor, struct rtl8192cd_chr_priv *priv);
 void rtl8192cd_chr_unreg(unsigned int minor);
 int rtl8192cd_fileopen(const char *filename, int flags, int mode);
-#ifdef __LINUX_2_6__
-__IRAM_IN_865X
-#else
+
 __MIPS16
 __IRAM_IN_865X
-#endif
 struct net_device *get_shortcut_dev(unsigned char *da);
 
 void force_stop_wlan_hw(void);
@@ -728,8 +725,10 @@ int PCIE_reset_procedure(int portnum, int Use_External_PCIE_CLK, int mdio_reset,
 			#endif
 
 			#if  CONFIG_PHY_EAT_40MHZ
+			printk("98 - 40MHz Clock Source\n");
 			HostPCIe_SetPhyMdioWrite(portnum, 6, 0xF148);  //40M
 			#else
+			printk("98 - 25MHz Clock Source\n");
 			HostPCIe_SetPhyMdioWrite(portnum, 6, 0xf848);  //25M
 			#endif
 
@@ -1029,15 +1028,18 @@ int PCIE_reset_procedure(int PCIE_Port0and1_8196B_208pin, int Use_External_PCIE_
 		HostPCIe_SetPhyMdioWrite(port, 1, 0x0003);
 		HostPCIe_SetPhyMdioWrite(port, 2, 0x4d18);
 
+#ifdef CONFIG_PHY_EAT_40MHZ
+
+		printk("96C - 40MHz Clock Source\n");
 #ifdef HIGH_POWER_EXT_PA
 		HostPCIe_SetPhyMdioWrite(port, 5, 0x0BF3);   //40M
 #else
 		HostPCIe_SetPhyMdioWrite(port, 5, 0x0BCB);   //40M
 #endif
-
-#if  1//PHY_EAT_40MHZ
 		HostPCIe_SetPhyMdioWrite(port, 6, 0xF148);  //40M
+
 #else
+		printk("96C - 25MHz Clock Source\n");
 		HostPCIe_SetPhyMdioWrite(port, 6, 0xf848);  //25M
 #endif
 
@@ -2860,10 +2862,49 @@ static int rtl8192cd_init_sw(struct rtl8192cd_priv *priv)
 #endif
 
 #ifdef MBSSID
-	// if vap enabled, set beacon int to 100 at minimun
-	if ((OPMODE & WIFI_AP_STATE) && GET_ROOT(priv)->pmib->miscEntry.vap_enable
-		&& priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod < 100)
-		priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod = 100;
+	// if vap enabled, set beacon int to 100 at minimun when guest ssid num <= 4
+    // if vap enabled, set beacon int to 200 at minimun when guest ssid num > 4
+    {
+        int ssid_num = 1, minbcn_period;
+        priv->bcn_period_bak = priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod;
+
+        if ((OPMODE & WIFI_AP_STATE) && GET_ROOT(priv)->pmib->miscEntry.vap_enable)
+        {
+            for (i=0; i<RTL8192CD_NUM_VWLAN; i++)
+            {
+                if (GET_ROOT(priv)->pvap_priv[i] && IS_DRV_OPEN(GET_ROOT(priv)->pvap_priv[i]))
+                {
+                    ssid_num++;
+                }
+            }
+        }
+
+        if (ssid_num >= 5)
+            minbcn_period = 200;
+        else
+            minbcn_period = 100;
+
+		// if vap enabled, set beacon int to 100 at minimun
+        if ((OPMODE & WIFI_AP_STATE) && GET_ROOT(priv)->pmib->miscEntry.vap_enable
+            && priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod < minbcn_period)
+            priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod = minbcn_period;
+
+        if ((OPMODE & WIFI_AP_STATE) && GET_ROOT(priv)->pmib->miscEntry.vap_enable)
+        {
+            for (i=0; i<RTL8192CD_NUM_VWLAN; i++)
+            {
+                if (GET_ROOT(priv)->pvap_priv[i])
+                {
+                        GET_ROOT(priv)->pvap_priv[i]->pmib->dot11StationConfigEntry.dot11BeaconPeriod = priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod;
+                        GET_ROOT(priv)->pvap_priv[i]->update_bcn_period = 1;
+                }
+            }
+
+            GET_ROOT(priv)->pmib->dot11StationConfigEntry.dot11BeaconPeriod = priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod;
+            GET_ROOT(priv)->update_bcn_period = 1;
+
+        }
+    }
 #endif
 
 #ifdef DOT11D
@@ -2991,12 +3032,11 @@ static int rtl8192cd_stop_sw(struct rtl8192cd_priv *priv)
 	  }
   }
 #endif
+#endif
 
 #ifdef PCIE_POWER_SAVING
 	if (timer_pending(&priv->ps_timer))
 		del_timer_sync(&priv->ps_timer);
-#endif		
-
 #endif
 #ifdef CONFIG_RTK_MESH
 		/*
@@ -3399,6 +3439,8 @@ static int rtl8192cd_stop_sw(struct rtl8192cd_priv *priv)
 			memset(&priv->pmib->dot11GroupKeysTable, '\0', sizeof(struct Dot11KeyMappingsEntry)); // reset group key
 		}
 	}
+
+	priv->pmib->dot11StationConfigEntry.dot11BeaconPeriod = priv->bcn_period_bak;
 #endif
 
 #ifdef RTK_BR_EXT
@@ -3973,6 +4015,12 @@ int rtl8192cd_open(struct net_device *dev)
 		return 0;
 	}
 #endif // CONFIG_RTK_MESH
+
+#ifdef PCIE_POWER_SAVING
+		if((priv->pwr_state == L1) || (priv->pwr_state == L2)) {
+			PCIeWakeUp(priv, (POWER_DOWN_T0<<3));
+		}
+#endif		
 
 	// stop h/w in the very beginning
 #if defined(UNIVERSAL_REPEATER) || defined(MBSSID)
@@ -4665,7 +4713,11 @@ if (GET_CHIP_VER(priv)==VERSION_8192D) {
 	if (IS_ROOT_INTERFACE(priv))
 #endif
 	{
+#ifdef CONFIG_RTL_8198
+		if (1)
+#else
 		if (REG32(REVR) == RTL8196C_REVISION_B)
+#endif
 			init_pcie_power_saving(priv);
 		else
 			priv->pshare->rf_ft_var.power_save = 0;
@@ -4802,11 +4854,8 @@ int rtl8192cd_close(struct net_device *dev)
 		priv->drv_state &= ~DRV_STATE_OPEN;     // set driver as has been closed, david
 
 #ifdef PCIE_POWER_SAVING
-	if (timer_pending(&priv->ps_timer))
-		del_timer_sync(&priv->ps_timer);
 	if((priv->pwr_state == L1) || (priv->pwr_state == L2)) {
-		priv->ps_ctrl = 0x82 | (priv->pwr_state<<4);
-		PCIe_power_save_tasklet((unsigned long)priv);
+		PCIeWakeUp(priv, (POWER_DOWN_T0<<3));
 	}
 #endif
 
@@ -4876,6 +4925,14 @@ int rtl8192cd_close(struct net_device *dev)
 
 		delay_ms(10);
 	}
+#ifdef CLIENT_MODE	/* WPS2DOTX   */
+	else if((OPMODE & (WIFI_STATION_STATE|WIFI_AUTH_SUCCESS|WIFI_ASOC_STATE))==(WIFI_STATION_STATE|WIFI_AUTH_SUCCESS|WIFI_ASOC_STATE)){
+		//printMac(BSSID);
+		issue_disassoc(priv,BSSID,_RSON_DEAUTH_STA_LEAVING_);
+		delay_ms(30);//make sure before issue_disassoc then TX be close		
+		OPMODE &= ~(WIFI_AUTH_SUCCESS|WIFI_ASOC_STATE) ;
+	}
+#endif    /* WPS2DOTX   */
 
 #ifdef MBSSID
 	if (IS_ROOT_INTERFACE(priv)) {
@@ -4911,18 +4968,19 @@ int rtl8192cd_close(struct net_device *dev)
 		{
 			free_irq(dev->irq, dev);
 #ifdef PCIE_POWER_SAVING
-			if (REG32(REVR) == RTL8196C_REVISION_B) 	{
-#ifdef RTL8198_WAKE
-				REG32(0xb8003000) &= ~ BIT(16);		// GIMR
+#ifdef GPIO_WAKEPIN			
+#ifdef CONFIG_RTL_8198
+			REG32(0xb8003000) &= ~ BIT(16);		// GIMR
 #else
+			if (REG32(REVR) == RTL8196C_REVISION_B) 	
 				REG32(0xb8003000) &= ~ BIT(9);		// GIMR
 #endif
 #if defined(__LINUX_2_6__)
-				free_irq(BSP_GPIO_ABCD_IRQ,dev);
+			free_irq(BSP_GPIO_ABCD_IRQ, dev);
 #else
-				free_irq(1, dev);
+			free_irq(1, dev);
+#endif	
 #endif
-			}
 #endif
 		}			
 #endif
@@ -4939,6 +4997,16 @@ int rtl8192cd_close(struct net_device *dev)
 #ifdef ENABLE_RTL_SKB_STATS
 	DEBUG_INFO("skb_tx_cnt =%d\n", rtl_atomic_read(&priv->rtl_tx_skb_cnt));
 	DEBUG_INFO("skb_rx_cnt =%d\n", rtl_atomic_read(&priv->rtl_rx_skb_cnt));
+#endif
+
+#if defined(CONFIG_RTL_92D_DMDP) && defined(CHECK_HANGUP)
+#ifdef MBSSID
+        if (IS_ROOT_INTERFACE(priv))
+#endif
+        if ((GET_CHIP_VER(priv) == VERSION_8192D)
+			&& (priv->pshare->rf_ft_var.peerReinit)
+        	&& (priv->pmib->dot11RFEntry.macPhyMode == DUALMAC_DUALPHY))
+                reset_dmdp_peer(priv);
 #endif
 
 	RESTORE_INT(flags);
@@ -5218,7 +5286,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #ifdef RTL8192CD_VARIABLE_USED_DMEM
 	pmib = (struct wifi_mib *)rtl8192cd_dmem_alloc(PMIB, NULL);
 #else
-	pmib = (struct wifi_mib *)kmalloc((sizeof(struct wifi_mib)), GFP_KERNEL);
+	pmib = (struct wifi_mib *)kmalloc((sizeof(struct wifi_mib)), GFP_ATOMIC);
 #endif
 	if (!pmib) {
 		rc = -ENOMEM;
@@ -5227,7 +5295,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 	}
 	memset(pmib, 0, sizeof(struct wifi_mib));
 
-	pevent_queue = (DOT11_QUEUE *)kmalloc((sizeof(DOT11_QUEUE)), GFP_KERNEL);
+	pevent_queue = (DOT11_QUEUE *)kmalloc((sizeof(DOT11_QUEUE)), GFP_ATOMIC);
 	if (!pevent_queue) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for DOT11_QUEUE (size %d)\n", sizeof(DOT11_QUEUE));
@@ -5235,7 +5303,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 	}
 	memset((void *)pevent_queue, 0, sizeof(DOT11_QUEUE));
 #ifdef CONFIG_RTL_WAPI_SUPPORT
-	wapiEvent_queue = (DOT11_QUEUE *)kmalloc((sizeof(DOT11_QUEUE)), GFP_KERNEL);
+	wapiEvent_queue = (DOT11_QUEUE *)kmalloc((sizeof(DOT11_QUEUE)), GFP_ATOMIC);
 	if (!wapiEvent_queue) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for DOT11_QUEUE (size %d)\n", sizeof(DOT11_QUEUE));
@@ -5243,7 +5311,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 	}
 	memset((void *)wapiEvent_queue, 0, sizeof(DOT11_QUEUE));
 #ifdef MBSSID
-	wapiVapEvent_queue = (DOT11_QUEUE *)kmalloc((sizeof(DOT11_QUEUE)*RTL8192CD_NUM_VWLAN), GFP_KERNEL);
+	wapiVapEvent_queue = (DOT11_QUEUE *)kmalloc((sizeof(DOT11_QUEUE)*RTL8192CD_NUM_VWLAN), GFP_ATOMIC);
 	if (!wapiVapEvent_queue) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for DOT11_QUEUE (size %d)\n", sizeof(DOT11_QUEUE)*RTL8192CD_NUM_VWLAN);
@@ -5265,7 +5333,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 		phw = &hw_info;
 #endif
 #else
-		phw = (struct rtl8192cd_hw *)kmalloc((sizeof(struct rtl8192cd_hw)), GFP_KERNEL);
+		phw = (struct rtl8192cd_hw *)kmalloc((sizeof(struct rtl8192cd_hw)), GFP_ATOMIC);
 		if (!phw) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for rtl8192cd_hw (size %d)\n", sizeof(struct rtl8192cd_hw));
@@ -5282,7 +5350,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 		pshare = &shared_info;
 #endif
 #else
-		pshare = (struct priv_shared_info *)kmalloc(sizeof(struct priv_shared_info), GFP_KERNEL);
+		pshare = (struct priv_shared_info *)kmalloc(sizeof(struct priv_shared_info), GFP_ATOMIC);
 		if (!pshare) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for priv_shared_info (size %d)\n", sizeof(struct priv_shared_info));
@@ -5299,7 +5367,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #endif
 #else
 		pwlan_hdr_poll = (struct wlan_hdr_poll *)
-						kmalloc((sizeof(struct wlan_hdr_poll)), GFP_KERNEL);
+						kmalloc((sizeof(struct wlan_hdr_poll)), GFP_ATOMIC);
 		if (!pwlan_hdr_poll) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for wlan_hdr_poll (size %d)\n", sizeof(struct wlan_hdr_poll));
@@ -5315,7 +5383,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #endif
 #else
 		pwlanllc_hdr_poll = (struct wlanllc_hdr_poll *)
-						kmalloc((sizeof(struct wlanllc_hdr_poll)), GFP_KERNEL);
+						kmalloc((sizeof(struct wlanllc_hdr_poll)), GFP_ATOMIC);
 		if (!pwlanllc_hdr_poll) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for wlanllc_hdr_poll (size %d)\n", sizeof(struct wlanllc_hdr_poll));
@@ -5331,7 +5399,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #endif
 #else
 		pwlanbuf_poll = (struct	wlanbuf_poll *)
-						kmalloc((sizeof(struct	wlanbuf_poll)), GFP_KERNEL);
+						kmalloc((sizeof(struct	wlanbuf_poll)), GFP_ATOMIC);
 		if (!pwlanbuf_poll) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for wlanbuf_poll (size %d)\n", sizeof(struct wlanbuf_poll));
@@ -5347,7 +5415,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #endif
 #else
 		pwlanicv_poll = (struct	wlanicv_poll *)
-						kmalloc((sizeof(struct	wlanicv_poll)), GFP_KERNEL);
+						kmalloc((sizeof(struct	wlanicv_poll)), GFP_ATOMIC);
 		if (!pwlanicv_poll) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for wlanicv_poll (size %d)\n", sizeof(struct wlanicv_poll));
@@ -5364,7 +5432,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #endif
 #else
 		pwlanmic_poll = (struct	wlanmic_poll *)
-						kmalloc((sizeof(struct	wlanmic_poll)), GFP_KERNEL);
+						kmalloc((sizeof(struct	wlanmic_poll)), GFP_ATOMIC);
 		if (!pwlanmic_poll) {
 			rc = -ENOMEM;
 			printk(KERN_ERR "Can't kmalloc for wlanmic_poll (size %d)\n", sizeof(struct wlanmic_poll));
@@ -5374,7 +5442,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 	}
 
 	pwlan_acl_poll = (struct wlan_acl_poll *)
-					kmalloc((sizeof(struct wlan_acl_poll)), GFP_KERNEL);
+					kmalloc((sizeof(struct wlan_acl_poll)), GFP_ATOMIC);
 	if (!pwlan_acl_poll) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for wlan_acl_poll (size %d)\n", sizeof(struct wlan_acl_poll));
@@ -5383,7 +5451,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 
 #if defined(CONFIG_RTK_MESH) && defined(_MESH_ACL_ENABLE_)	// below code copy above ACL code
 	pmesh_acl_poll = (struct mesh_acl_poll *)
-					kmalloc((sizeof(struct mesh_acl_poll)), GFP_KERNEL);
+					kmalloc((sizeof(struct mesh_acl_poll)), GFP_ATOMIC);
 	if (!pmesh_acl_poll) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for Mesh wlan_acl_poll (size %d)\n", sizeof(struct mesh_acl_poll));
@@ -5392,7 +5460,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 #endif
 
 	Eap_packet = (DOT11_EAP_PACKET *)
-					kmalloc((sizeof(DOT11_EAP_PACKET)), GFP_KERNEL);
+					kmalloc((sizeof(DOT11_EAP_PACKET)), GFP_ATOMIC);
 	if (!Eap_packet) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for Eap_packet (size %d)\n", sizeof(DOT11_EAP_PACKET));
@@ -5402,7 +5470,7 @@ static int MDL_DEVINIT rtl8192cd_init_one(struct pci_dev *pdev,
 
 #if defined(INCLUDE_WPA_PSK) || defined(WIFI_HAPD)
 	wpa_global_info = (WPA_GLOBAL_INFO *)
-					kmalloc((sizeof(WPA_GLOBAL_INFO)), GFP_KERNEL);
+					kmalloc((sizeof(WPA_GLOBAL_INFO)), GFP_ATOMIC);
 	if (!wpa_global_info) {
 		rc = -ENOMEM;
 		printk(KERN_ERR "Can't kmalloc for wpa_global_info (size %d)\n", sizeof(WPA_GLOBAL_INFO));
@@ -6034,7 +6102,7 @@ register_driver:
 			priv->RreqEnd = 0;
 			priv->RreqBegin = 0;
 
-			pann_mpp_tb = (struct mpp_tb*)kmalloc(sizeof(struct mpp_tb), GFP_KERNEL);
+			pann_mpp_tb = (struct mpp_tb*)kmalloc(sizeof(struct mpp_tb), GFP_ATOMIC);
 			if(!pann_mpp_tb)
 			{
 				rc = -ENOMEM;
@@ -6042,7 +6110,7 @@ register_driver:
 				goto err_out_free;
 			}
 			init_mpp_pool(pann_mpp_tb);
-			proxy_table = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_KERNEL);
+			proxy_table = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_ATOMIC);
 			if(!proxy_table)
 			{
 				rc = -ENOMEM;
@@ -6053,7 +6121,7 @@ register_driver:
 
 #ifdef PU_STANDARD
 			//pepsi
-			proxyupdate_table = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_KERNEL);
+			proxyupdate_table = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_ATOMIC);
 			if(!proxyupdate_table)
 			{
 				rc = -ENOMEM;
@@ -6063,7 +6131,7 @@ register_driver:
 			memset((void*)proxyupdate_table, 0, sizeof(struct hash_table));
 #endif
 
-			pathsel_queue = (DOT11_QUEUE2 *)kmalloc((sizeof(DOT11_QUEUE2)), GFP_KERNEL);
+			pathsel_queue = (DOT11_QUEUE2 *)kmalloc((sizeof(DOT11_QUEUE2)), GFP_ATOMIC);
 			if (!pathsel_queue) {
 				rc = -ENOMEM;
 				printk(KERN_ERR "Can't kmalloc for PATHSELECTION_QUEUE (size %d)\n", sizeof(DOT11_QUEUE));
@@ -6071,21 +6139,21 @@ register_driver:
 			}
 			memset((void *)pathsel_queue, 0, sizeof (DOT11_QUEUE2));
 #ifdef _11s_TEST_MODE_
-			receiver_queue = (DOT11_QUEUE2 *)kmalloc((sizeof(DOT11_QUEUE2)), GFP_KERNEL);
+			receiver_queue = (DOT11_QUEUE2 *)kmalloc((sizeof(DOT11_QUEUE2)), GFP_ATOMIC);
 			if (!receiver_queue) {
 				rc = -ENOMEM;
 				printk(KERN_ERR "Can't kmalloc for receiver_queue (size %d)\n", sizeof(DOT11_QUEUE));
 				goto err_out_free;
 			}
 			memset((void *)receiver_queue, 0, sizeof (DOT11_QUEUE2));
-			pgalileo_poll = (struct Galileo_poll *)	kmalloc((sizeof( struct Galileo_poll)), GFP_KERNEL);
+			pgalileo_poll = (struct Galileo_poll *)	kmalloc((sizeof( struct Galileo_poll)), GFP_ATOMIC);
 			if (!pgalileo_poll) {
 				rc = -ENOMEM;
 				printk(KERN_ERR "Can't kmalloc for pgalileo_poll (size %d)\n", sizeof(struct Galileo_poll));
 				goto err_out_free;
 			}
 #endif
-			pathsel_table = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_KERNEL);
+			pathsel_table = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_ATOMIC);
 			if(!pathsel_table)
 			{
 				rc = -ENOMEM;
@@ -6094,7 +6162,7 @@ register_driver:
 			}
 			memset((void*)pathsel_table, 0, sizeof(struct hash_table));
 
-			mesh_rreq_retry_queue = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_KERNEL);
+			mesh_rreq_retry_queue = (struct hash_table*)kmalloc(sizeof(struct hash_table), GFP_ATOMIC);
 			if(!mesh_rreq_retry_queue)
 			{
 				rc = -ENOMEM;
@@ -6131,7 +6199,7 @@ register_driver:
 
 			for(i = 0; i < (1 << mesh_rreq_retry_queue->table_size_power); i++)
 			{
-				(((struct mesh_rreq_retry_entry*)(mesh_rreq_retry_queue->entry_array[i].data))->ptr) = (struct pkt_queue*)kmalloc(sizeof(struct pkt_queue), GFP_KERNEL);
+				(((struct mesh_rreq_retry_entry*)(mesh_rreq_retry_queue->entry_array[i].data))->ptr) = (struct pkt_queue*)kmalloc(sizeof(struct pkt_queue), GFP_ATOMIC);
 				if (!(((struct mesh_rreq_retry_entry*)(mesh_rreq_retry_queue->entry_array[i].data))->ptr)) {
 					rc = -ENOMEM;
 					printk(KERN_ERR "Can't kmalloc for mesh_rreq_retry_entry (size %d)\n", sizeof(struct pkt_queue));
@@ -6182,7 +6250,7 @@ register_driver:
 #ifdef __DRAYTEK_OS__
 		page_ptr = rtl8185_malloc(DESC_DMA_PAGE_SIZE, 1);	// allocate non-cache buffer
 #else
-		page_ptr = kmalloc(DESC_DMA_PAGE_SIZE, GFP_KERNEL);
+		page_ptr = kmalloc(DESC_DMA_PAGE_SIZE, GFP_ATOMIC);
 #endif
 		}
 
@@ -7477,33 +7545,36 @@ struct net_device *get_shortcut_dev(unsigned char *da)
 		if (wlan_device[i].priv && netif_running(wlan_device[i].priv->dev)) {
 			priv = wlan_device[i].priv;
 
-			if (
-			//2010-5-10
-			#ifndef _SINUX_ 
-			// if sinux, no linux bridge, so should don't depend on br_port if use br_shortcut (John Qian 2010/6/24) 
-			(priv->dev->br_port) &&
-			!(priv->dev->br_port->br->stp_enabled) &&
-			#endif
-			!(priv->pmib->dot11OperationEntry.disable_brsc)) {
-				pstat = get_stainfo(priv, da);
-				if (pstat && pstat->tx_pkts > 10) {	/* Make sure it must have some packets go theough bridge module before shortcut */
-					#ifdef WDS
-					if (!(pstat->state & WIFI_WDS))	// if WDS peer
-					#endif
-					{
-						#ifdef CONFIG_RTK_MESH
-						if( isMeshPoint(pstat))
-							{dev = priv->mesh_dev;}
-						else
+			if (priv
+				//2010-5-10
+				#ifndef _SINUX_ 
+				// if sinux, no linux bridge, so should don't depend on br_port if use br_shortcut (John Qian 2010/6/24) 
+				&& (priv->dev->br_port)
+				&& !(priv->dev->br_port->br->stp_enabled)
+				#endif
+			) {
+				if (!priv->pmib->dot11OperationEntry.disable_brsc) {
+					pstat = get_stainfo(priv, da);
+					if (pstat && pstat->tx_pkts > 10) {	/* Make sure it must have some packets go theough bridge module before shortcut */
+						#ifdef WDS
+						if (!(pstat->state & WIFI_WDS))	// if WDS peer
 						#endif
-							{dev = priv->dev;}
-						break;
+						{
+							#ifdef CONFIG_RTK_MESH
+							if( isMeshPoint(pstat))
+								{dev = priv->mesh_dev;}
+							else
+							#endif
+								{dev = priv->dev;}
+							break;
+						}
 					}
 				}
 				#ifdef MBSSID
 				else if ((OPMODE & WIFI_AP_STATE) && priv->pmib->miscEntry.vap_enable) {
 					for (j=0; j<RTL8192CD_NUM_VWLAN; j++) {
-						if ((priv->pvap_priv[j]->assoc_num > 0) && IS_DRV_OPEN(priv->pvap_priv[j])) {
+						if ((priv->pvap_priv[j]->assoc_num > 0) && IS_DRV_OPEN(priv->pvap_priv[j]) &&
+							!(priv->pvap_priv[j]->pmib->dot11OperationEntry.disable_brsc)) {
 							pstat = get_stainfo(priv->pvap_priv[j], da);
 							if (pstat && pstat->tx_pkts > 10) {
 								dev = priv->pvap_priv[j]->dev;

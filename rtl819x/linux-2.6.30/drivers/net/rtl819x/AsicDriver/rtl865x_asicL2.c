@@ -6615,6 +6615,7 @@ int32 rtl865xC_setAsicEthernetForceModeRegs(uint32 port, uint32 enForceMode, uin
 	}
 	
 	WRITE_MEM32( PCRP0 + offset, PCR );
+	mdelay(10);
 	TOGGLE_BIT_IN_REG_TWICE(PCRP0 + offset,EnForceMode);
 	return SUCCESS;
 

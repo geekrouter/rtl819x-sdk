@@ -7,12 +7,15 @@ DOQUIET = false
 #EMULATOR = true
 #KERNEL_ROOT = /home/john/RealTek/linux-2.5/linux
 KERNEL_ROOT = ..
+ifeq ($(wildcard $(DIR_USERS)/boa/tools/cvimg),)
 ifeq ($(wildcard $(DIR_USERS)/goahead-2.1.1/LINUX/cvimg),)
 CVIMG=./cvimg
 else
 CVIMG=$(DIR_USERS)/goahead-2.1.1/LINUX/cvimg
 endif
-
+else
+CVIMG=$(DIR_USERS)/boa/tools/cvimg
+endif
 # ---- shouldn't need to modify below this line.
 
 ifdef EMULATOR

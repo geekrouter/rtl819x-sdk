@@ -119,8 +119,20 @@ function saveChanges_basic(form, wlan_id)
 	
 	
   mode =form.elements["mode"+wlan_id] ;
+  
+	if (form.name=="wlanSetup") {
+		// for support WPS2DOTX  ; ap mode
+		hiddenSSIDEnabled = form.elements["hiddenSSID"+wlan_id] ;
 
-
+		if(mode.selectedIndex==0 || mode.selectedIndex==3){
+			if ( hiddenSSIDEnabled.selectedIndex==0 ) {
+				if(!confirm("if turn on hiddenSSID; WPS2.0 will be disabled")){
+					return false;
+				}
+			}
+		}
+	}
+   
   ssid =form.elements["ssid"+wlan_id] ;			//mode.selectedIndex=4 means AP+MESH
   if ((mode.selectedIndex==0 || mode.selectedIndex==3 || mode.selectedIndex==4 )&& ssid.value=="") {
 	alert('SSID cannot be empty!');
@@ -139,10 +151,12 @@ function saveChanges_basic(form, wlan_id)
 	if(wlBandMode == 3) // 3:BANDMODESIGNLE
 	{
 		var selectText=form.elements["band"+wlan_id].options[idx_value].text.substr(0,1);
+		var bandOption = form.elements["band"+wlan_id].options.value;
 		
-		if(selectText=='2') //match '2'
+		//if(selectText=='2') //match '2'
+		if(bandOption == 0 || bandOption == 1 || (bandOption == 7 && selectText=='2') || bandOption == 2 || bandOption == 9 || bandOption == 10)
 			form.elements["Band2G5GSupport"].value = 1;//1:PHYBAND_2G
-		else
+		else if(bandOption == 3 || (bandOption == 7 && selectText=='5') || bandOption == 11)
 			form.elements["Band2G5GSupport"].value = 2;//2:PHYBAND_5G										
 	}
 

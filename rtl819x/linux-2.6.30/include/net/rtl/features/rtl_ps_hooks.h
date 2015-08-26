@@ -14,11 +14,14 @@
 #include <net/netfilter/nf_conntrack_helper.h>
 
 #include <net/rtl/features/rtl_features.h>
+#if defined(CONFIG_RTL_FASTBRIDGE)
+#include <net/rtl/features/fast_bridge.h>
+#endif
 
-#define	RTL_PS_HOOKS_CONTINUE	0
-#define	RTL_PS_HOOKS_BREAK		1
-#define	RTL_PS_HOOKS_RETURN		2
-#define	RTL_PS_HOOKS_DROP			3
+#define	RTL_PS_HOOKS_CONTINUE	0		/*	keep the process flow	*/
+#define	RTL_PS_HOOKS_BREAK		1		/*	should break from caller's loops	*/
+#define	RTL_PS_HOOKS_RETURN		2		/*	should immediately return from the caller function	*/
+#define	RTL_PS_HOOKS_DROP		3
 
 typedef struct {
 	struct net				*net;
@@ -52,7 +55,7 @@ int32 rtl_fn_hash_replace_hooks(struct fib_table *tb, struct fib_config *cfg, st
 
 int32 rtl_dev_queue_xmit_hooks(struct sk_buff *skb, struct net_device *dev);
 int32 rtl_dev_hard_start_xmit_hooks(struct sk_buff *skb, struct net_device *dev, struct netdev_queue *txq);
-int32 rtl_netif_receive_skb_hooks(struct sk_buff *skb);
+int32 rtl_netif_receive_skb_hooks(struct sk_buff **pskb);
 
 int32 rtl_br_dev_queue_push_xmit_before_xmit_hooks(struct sk_buff *skb);
 
@@ -130,6 +133,12 @@ int32 __drop_one_conntrack_process_hooks1(struct nf_conn* ct, int dropPrioIdx, i
 int32 __drop_one_conntrack_process_hooks2(struct nf_conn* ct, int dropPrioIdx, int factor, int checkFlags, int tcpUdpState);
 int32 rtl_nf_conn_GC_init_hooks(void);
 #endif
+
+#if defined(CONFIG_BRIDGE)
+int32 rtl_fdb_delete_hooks(struct net_bridge_fdb_entry *f);
+int32 rtl_br_fdb_cleanup_hooks(struct net_bridge *br, struct net_bridge_fdb_entry *f);
+#endif
+
 #endif
 
 

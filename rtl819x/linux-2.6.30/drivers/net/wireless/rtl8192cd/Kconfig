@@ -14,14 +14,9 @@ config RTL_HOSTAPD_SUPPORT
 	depends on RTL8192CD && RTL_92C_SUPPORT
 	default n
 
-config PCIE_POWER_SAVING
-	bool "Enable PCIE power saving support"
-	depends on RTL8192CD && RTL_92C_SUPPORT && !RTL_DUAL_PCIESLOT_BIWLAN_D
-	default y
-
 config HIGH_POWER_EXT_PA
 	bool "Enable external high power PA"
-	depends on RTL8192CD && RTL_92C_SUPPORT && !RTL_DUAL_PCIESLOT_BIWLAN_D
+	depends on RTL8192CD
 	default n
 
 config HIGH_POWER_EXT_LNA
@@ -44,6 +39,11 @@ config RTL_92D_SUPPORT
 	depends on RTL8192CD
 	default n
 
+config PCIE_POWER_SAVING
+        bool "Enable PCIE power saving support"
+        depends on RTL8192CD && !RTL_DUAL_PCIESLOT_BIWLAN_D
+        default y
+
 config RTL_92D_DMDP
 	bool "RTL8192D dual-MAC-dual-PHY mode"
 	depends on RTL8192CD && RTL_92D_SUPPORT && !RTL_DUAL_PCIESLOT_BIWLAN_D
@@ -51,7 +51,7 @@ config RTL_92D_DMDP
 
 config USB_POWER_BUS
 	bool "Use USB Power"
-	depends on RTL8192CD && RTL_92D_SUPPORT
+	depends on RTL8192CD && RTL_92D_SUPPORT && !RTL_92C_SUPPORT
 	default n
 
 config RTL_DFS_SUPPORT
@@ -119,3 +119,15 @@ config WIRELESS_LAN_MODULE
 	bool
 	default y if RTL8192CD=m
 
+config RTL_WPS2_SUPPORT
+	bool "Realtek wps2.0 support " 
+	default y
+
+config PHY_EAT_40MHZ
+	bool "Clock Source, Select is 40MHz, otherwise 25MHz" 
+	default y
+
+config TXPWR_LMT
+	bool "Band Edge Limit support"
+	depends on RTL8192CD && RTL_92D_SUPPORT
+	default n

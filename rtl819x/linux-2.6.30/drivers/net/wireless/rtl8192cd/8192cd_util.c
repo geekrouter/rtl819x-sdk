@@ -2731,6 +2731,12 @@ int UseSwCrypto(struct rtl8192cd_priv *priv, struct stat_info *pstat, int isMult
 #endif
 
 #ifdef USE_WEP_DEFAULT_KEY
+				if (GET_ROOT(priv)->pmib->dot11OperationEntry.opmode & WIFI_STATION_STATE)
+                {
+                    if (pstat && (pstat->state & WIFI_ASOC_STATE))
+                        return 0;
+                }
+
 				if (isMulticast && 	!priv->pmib->dot11GroupKeysTable.keyInCam)
 					return 1;
 #else			
@@ -5350,7 +5356,7 @@ void choose_IOT_main_sta(struct rtl8192cd_priv *priv, struct stat_info *pstat)
 		}
 
 		if (pstat->ht_cap_len) {
-			if ((tx_2s_avg + rx_2s_avg) >= 50) {
+			if ((tx_2s_avg + rx_2s_avg >= 50) && (pstat->tx_avarage + pstat->rx_avarage > 10*1024*1024/8)) {
 				priv->pshare->highTP_found_pstat = pstat;
 			}
 		}

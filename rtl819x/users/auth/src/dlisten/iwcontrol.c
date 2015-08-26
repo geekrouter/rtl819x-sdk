@@ -229,6 +229,21 @@ int ProcessRequestEvent(char *wlan_name)
 			sprintf(szEvent, (char*)"Receive Event %s", "WSC_PIN_IND");
 			isWscdEvt = TRUE;
 			break;
+
+	/* WPS2DOTX ; support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */				
+		case	DOT11_EVENT_WSC_SET_MY_PIN:	
+			sprintf(szEvent, (char*)"Receive Event %s", "WSC_SET_MY_PIN");
+			isWscdEvt = TRUE;
+			break;			
+		case	DOT11_EVENT_WSC_SPEC_SSID:	
+			sprintf(szEvent, (char*)"Receive Event %s", "WSC_SPEC_SSID");
+			isWscdEvt = TRUE;
+			break;			
+		case	DOT11_EVENT_WSC_SPEC_MAC_IND:	
+			sprintf(szEvent, (char*)"Receive Event %s", "WSC_SPEC_MAC");
+			isWscdEvt = TRUE;
+			break;			
+	/* WPS2DOTX ; support  Assigned MAC Addr,Assigned SSID,dymanic change STA's PIN code, 2011-0505 */				
 #ifdef CONFIG_IWPRIV_INTF
 		case	DOT11_EVENT_WSC_START_IND:
 			sprintf(szEvent, (char*)"Receive Event %s", "WSC_START_IND");

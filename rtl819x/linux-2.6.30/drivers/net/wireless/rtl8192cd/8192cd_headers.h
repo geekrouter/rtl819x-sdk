@@ -45,7 +45,7 @@ EXTERN struct stat_info *alloc_stainfo(struct rtl8192cd_priv *priv, unsigned cha
 EXTERN void free_sta_tx_skb(struct rtl8192cd_priv *priv, struct stat_info *pstat);
 EXTERN void free_sta_skb(struct rtl8192cd_priv *priv, struct stat_info *pstat);
 EXTERN int free_stainfo(struct rtl8192cd_priv *priv, struct	stat_info *pstat);
-EXTERN struct stat_info *get_stainfo (struct rtl8192cd_priv *priv, unsigned char *hwaddr);
+EXTERN __MIPS16 __IRAM_IN_865X struct stat_info *get_stainfo (struct rtl8192cd_priv *priv, unsigned char *hwaddr);
 EXTERN struct stat_info *get_aidinfo (struct rtl8192cd_priv *priv, unsigned int aid);
 EXTERN int IS_BSSID(struct rtl8192cd_priv *priv, unsigned char *da);
 EXTERN int IS_MCAST(unsigned char *da);
@@ -55,7 +55,7 @@ EXTERN int skb_p80211_to_ether(struct net_device *dev, int wep_mode, struct rx_f
 EXTERN int strip_amsdu_llc(struct rtl8192cd_priv *priv, struct sk_buff *skb, struct stat_info *pstat);
 EXTERN unsigned char *get_da(unsigned char *pframe);
 EXTERN unsigned char *get_bssid_mp(unsigned char *pframe);
-EXTERN unsigned char get_hdrlen(struct rtl8192cd_priv *priv, UINT8 *pframe);
+EXTERN __MIPS16 __IRAM_IN_865X unsigned char get_hdrlen(struct rtl8192cd_priv *priv, UINT8 *pframe);
 EXTERN unsigned int get_mcast_privacy(struct rtl8192cd_priv *priv, unsigned int *iv, unsigned int *icv,
 				unsigned int *mic);
 EXTERN unsigned int	get_privacy(struct rtl8192cd_priv *priv, struct stat_info *pstat,
@@ -251,7 +251,7 @@ void split_pool(struct rtl8192cd_priv *priv);
 #define EXTERN
 #endif
 
-EXTERN void assign_wlanseq(struct rtl8192cd_hw *phw, unsigned char *pframe, struct stat_info *pstat, struct wifi_mib *pmib
+EXTERN __MIPS16 __IRAM_IN_865X void assign_wlanseq(struct rtl8192cd_hw *phw, unsigned char *pframe, struct stat_info *pstat, struct wifi_mib *pmib
 #ifdef CONFIG_RTK_MESH	// For message if broadcast data frame via mesh (ex:ARP requst)
 	, unsigned char is_11s
 #endif
@@ -268,7 +268,7 @@ EXTERN int rtl8192cd_signin_txdesc(struct rtl8192cd_priv *priv, struct tx_insn* 
 
 #ifdef TX_SHORTCUT
 //EXTERN void signin_txdesc_shortcut(struct rtl8190_priv *priv, struct tx_insn *txcfg);
-EXTERN int rtl8192cd_signin_txdesc_shortcut(struct rtl8192cd_priv *priv, struct tx_insn *txcfg, int idx);
+EXTERN __MIPS16 __IRAM_IN_865X int rtl8192cd_signin_txdesc_shortcut(struct rtl8192cd_priv *priv, struct tx_insn *txcfg, int idx);
 #endif
 EXTERN int SetupOneCmdPacket(struct rtl8192cd_priv *priv, unsigned char *dat_content,
 				unsigned short txLength, unsigned char LastPkt);
@@ -415,6 +415,9 @@ EXTERN void reset_1r_sta_RA(struct rtl8192cd_priv *priv, unsigned int sg_rate);
 
 EXTERN void default_WMM_para(struct rtl8192cd_priv *priv);
 
+#ifdef CONFIG_RTL_92D_DMDP
+EXTERN void reset_dmdp_peer(struct rtl8192cd_priv *from);
+#endif
 #undef EXTERN
 
 
@@ -433,7 +436,7 @@ EXTERN void rtl8192cd_rx_tkl_isr(unsigned long task_priv);
 #endif
 EXTERN void rtl8192cd_rx_isr(struct rtl8192cd_priv *priv);
 EXTERN void rtl8192cd_rx_dsr(unsigned long task_priv);
-EXTERN void rtl_netif_rx(struct rtl8192cd_priv *priv, struct sk_buff *pskb, struct stat_info *pstat);
+EXTERN __MIPS16 __IRAM_IN_865X void rtl_netif_rx(struct rtl8192cd_priv *priv, struct sk_buff *pskb, struct stat_info *pstat);
 //EXTERN void rtl8190_rxcmd_isr(struct rtl8190_priv *priv);
 EXTERN void reorder_ctrl_timeout(unsigned long task_priv);
 
@@ -478,13 +481,16 @@ EXTERN int ReadAdapterInfo8192CE(struct rtl8192cd_priv *priv);
 #endif
 
 #ifdef PCIE_POWER_SAVING
-EXTERN void PCIE_reset_procedure3(void);
+EXTERN void PCIE_reset_procedure3(struct rtl8192cd_priv *priv);
 EXTERN void PCIe_power_save_timer(unsigned long task_priv);
 EXTERN void PCIe_power_save_tasklet(unsigned long task_priv);
 EXTERN void init_pcie_power_saving(struct rtl8192cd_priv *priv);
 EXTERN void switch_to_1x1(struct rtl8192cd_priv *priv, int mode) ;
 EXTERN void PCIeWakeUp(struct rtl8192cd_priv *priv, unsigned int expTime);
 EXTERN void radio_off(struct rtl8192cd_priv *priv);
+#ifdef PCIE_POWER_SAVING_DEBUG
+EXTERN int PCIE_PowerDown(struct rtl8192cd_priv *priv, unsigned char *data);
+#endif
 #ifdef GPIO_WAKEPIN
 EXTERN int request_irq_for_wakeup_pin(struct net_device *dev);
 #endif
@@ -602,14 +608,24 @@ EXTERN unsigned char *get_line(unsigned char **line);
 EXTERN void find_pwr_limit(struct rtl8192cd_priv *priv);
 #endif
 
+//_TXPWR_REDEFINE
+EXTERN void Read_PG_File(struct rtl8192cd_priv *priv, int reg_file, int table_number, 
+				char *MCSTxAgcOffset_A, char *MCSTxAgcOffset_B, char *OFDMTxAgcOffset_A,
+				char *OFDMTxAgcOffset_B, char *CCKTxAgc_A, char *CCKTxAgc_B);
+
+
 #ifdef MERGE_FW
 #ifdef CONFIG_RTL_92D_SUPPORT
 	EXTERN unsigned char *data_MACPHY_REG_start, *data_MACPHY_REG_end;
   	EXTERN unsigned char *data_PHY_REG_n_start, *data_PHY_REG_n_end;
   	EXTERN unsigned char *data_PHY_REG_MP_n_start, *data_PHY_REG_MP_n_end;
 	EXTERN unsigned char *data_PHY_REG_PG_start, *data_PHY_REG_PG_end;
+	EXTERN unsigned char *data_PHY_REG_PG_FCC_start, *data_PHY_REG_PG_FCC_end;
+	EXTERN unsigned char *data_PHY_REG_PG_CE_start, *data_PHY_REG_PG_CE_end;
 #ifdef TXPWR_LMT
 	EXTERN unsigned char *data_TXPWR_LMT_start, *data_TXPWR_LMT_end;
+	EXTERN unsigned char *data_TXPWR_LMT_FCC_start, *data_TXPWR_LMT_FCC_end;
+	EXTERN unsigned char *data_TXPWR_LMT_CE_start, *data_TXPWR_LMT_CE_end;
 #endif
 	EXTERN unsigned char *data_AGC_TAB_n_start, *data_AGC_TAB_n_end;
 	EXTERN unsigned char *data_AGC_TAB_2G_n_start, *data_AGC_TAB_2G_n_end;
@@ -617,9 +633,21 @@ EXTERN void find_pwr_limit(struct rtl8192cd_priv *priv);
 	EXTERN unsigned char *data_radio_a_n_start, *data_radio_a_n_end;
 	EXTERN unsigned char *data_radio_b_n_start, *data_radio_b_n_end;
 #ifdef RTL8192D_INT_PA
+#ifdef USB_POWER_SUPPORT
+	EXTERN unsigned char *data_radio_a_intPA_GM_start, *data_radio_a_intPA_GM_end;
+	EXTERN unsigned char *data_radio_b_intPA_GM_start, *data_radio_b_intPA_GM_end;
+#else
 	EXTERN unsigned char *data_radio_a_intPA_start, *data_radio_a_intPA_end;
 	EXTERN unsigned char *data_radio_b_intPA_start, *data_radio_b_intPA_end;
 #endif
+#endif
+
+//_TXPWR_REDEFINE
+#ifdef HIGH_POWER_EXT_PA
+	EXTERN unsigned char *data_radio_a_n_92d_hp_start, *data_radio_a_n_92d_hp_end;
+	EXTERN unsigned char *data_radio_b_n_92d_hp_start, *data_radio_b_n_92d_hp_end;
+#endif
+
 	EXTERN unsigned char *data_rtl8192dfw_n_start, *data_rtl8192dfw_n_end;
 #endif // CONFIG_RTL_92D_SUPPORT
 
@@ -738,6 +766,10 @@ EXTERN const struct iw_handler_def rtl8192cd_iw_handler_def;
 
 #endif
 
+#ifdef TXPWR_LMT
+EXTERN int _convert_2_pwr_dot(char *s, int base);
+#endif
+
 EXTERN int _atoi(char *s, int base);
 EXTERN void set_mib_default_tbl(struct rtl8192cd_priv *priv);
 EXTERN int get_array_val (unsigned char *dst, char *src, int len);
@@ -769,7 +801,7 @@ EXTERN int rtl8192cd_ss_req(struct rtl8192cd_priv *priv, unsigned char *data, in
 EXTERN void delay_us(unsigned int t);
 EXTERN void delay_ms(unsigned int t);
 
-#ifdef WIFI_WPAS
+#if defined(CLIENT_MODE)&&defined(WIFI_WPAS)
 EXTERN int check_bss_encrypt(struct rtl8192cd_priv *priv);
 #endif
 
@@ -1385,5 +1417,23 @@ EXTERN void DOT11_InitQueue2(DOT11_QUEUE2 * q, int szMaxItem, int szMaxData);
 #undef EXTERN
 
 #endif // CONFIG_RTK_MESH
+/*-----------------------------------------------------------------------------
+								8192cd_a4_sta.c
+------------------------------------------------------------------------------*/
+#ifdef A4_STA
+#ifndef _8192CD_A4_STA_C_
+#define EXTERN  extern
+#else
+#define EXTERN
+#endif
+
+EXTERN void a4_sta_cleanup(struct rtl8192cd_priv *priv);
+EXTERN void a4_sta_expire(struct rtl8192cd_priv *priv);
+EXTERN void a4_sta_add(struct rtl8192cd_priv *priv, struct stat_info *pstat, unsigned char *mac);
+EXTERN struct stat_info *a4_sta_lookup(struct rtl8192cd_priv *priv, unsigned char *mac);
+
+#undef EXTERN
+
+#endif
 #endif // _8192CD_HEADERS_H_
 

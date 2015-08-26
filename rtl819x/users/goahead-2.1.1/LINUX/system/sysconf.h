@@ -23,7 +23,7 @@
 #define MESH_PATHSEL "/bin/pathsel" 
 #define BR_INIT_FILE "/tmp/bridge_init"
 #define ETH_VLAN_SWITCH "/proc/disable_l2_table"
-
+#define PROC_RTK_VLAN_SUPPORT "/proc/rtk_vlan_support"
 //Initial system time especilly for cert usage
 #define SET_TIME "/var/system/set_time"
 
@@ -78,6 +78,7 @@
 #define WEBS_PID_FILE "/var/run/webs.pid"
 #define RT_CACHE_REBUILD_COUNT "/proc/sys/net/ipv4/rt_cache_rebuild_count"
 
+#define REINIT_FILE "/var/reinit"
 
 #endif
 

@@ -6,7 +6,7 @@
 EXTRA_CFLAGS += -I $(DIR_LINUX)/net
 EXTRA_CFLAGS += -D__KERNEL__
 #EXTRA_CFLAGS += -Wno-implicit -Werror
- 
+
 #EXTRA_CFLAGS += -DCONFIG_RTK_IPTABLES_FAST_PATH
 #EXTRA_CFLAGS += -DCONFIG_FAST_PATH_MODULE
 
@@ -16,7 +16,7 @@ else
 TARGET = 96C
 endif
  
-EFEATURES_OBJ=$(TARGET)/rtl_features.o $(TARGET)/rtl_ps_hooks.o
+EFEATURES_OBJ=rtl_features.o rtl_ps_hooks.o
 obj-y := $(EFEATURES_OBJ)
 obj-$(CONFIG_RTL_NF_CONNTRACK_GARBAGE_NEW) += $(TARGET)/rtl_nf_connGC.o
  

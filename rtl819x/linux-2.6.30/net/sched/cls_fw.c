@@ -103,6 +103,7 @@ static int fw_classifyMark(__u32 mark, struct tcf_proto *tp,
 		}
 	} else {
 		/* old method */
+		id = mark;
 		if (id && (TC_H_MAJ(id) == 0 || !(TC_H_MAJ(id^tp->q->handle)))) {
 			res->classid = id;
 			res->class = 0;

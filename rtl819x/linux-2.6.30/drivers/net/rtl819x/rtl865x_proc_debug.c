@@ -3689,7 +3689,6 @@ static int32 port_status_read( char *page, char **start, off_t off, int count, i
 	for(port=PHY0;port<=CPU;port++)
 	{
 		regData = READ_MEM32(PSRP0+((port)<<2));
-
 		if (port==CPU)
 			len += sprintf(page+len, "CPUPort ");
 		else
@@ -3765,10 +3764,14 @@ static int32 port_status_write( struct file *filp, const char *buff,unsigned lon
 				type = HALF_DUPLEX_10M;
 			else if(strcmp(tokptr,"100_half") == 0)
 				type = HALF_DUPLEX_100M;
+			else if(strcmp(tokptr,"1000_half") == 0)
+				type = HALF_DUPLEX_1000M;
 			else if(strcmp(tokptr,"10_full") == 0)
 				type = DUPLEX_10M;
 			else if(strcmp(tokptr,"100_full") == 0)
 				type = DUPLEX_100M;
+			else if(strcmp(tokptr,"1000_full") == 0)
+				type = DUPLEX_1000M;
 			else
 				type = PORT_AUTO;
 
@@ -3791,7 +3794,16 @@ static int32 port_status_write( struct file *filp, const char *buff,unsigned lon
 					forceDuplex=FALSE;
 					advCapability=(1<<HALF_DUPLEX_100M);
 					break;
-				}				
+				}
+				case HALF_DUPLEX_1000M:
+				{
+					forceMode=TRUE;
+					forceLink=TRUE;
+					forceLinkSpeed=SPEED1000M;
+					forceDuplex=FALSE;
+					advCapability=(1<<HALF_DUPLEX_1000M);
+					break;
+				}
 				case DUPLEX_10M:
 				{
 					forceMode=TRUE;
@@ -3809,7 +3821,16 @@ static int32 port_status_write( struct file *filp, const char *buff,unsigned lon
 					forceDuplex=TRUE;
 					advCapability=(1<<DUPLEX_100M);
 					break;
-				}				
+				}	
+				case DUPLEX_1000M:
+				{
+					forceMode=TRUE;
+					forceLink=TRUE;
+					forceLinkSpeed=SPEED1000M;
+					forceDuplex=TRUE;
+					advCapability=(1<<DUPLEX_1000M);
+					break;
+				}	
 				default:	
 				{
 					forceMode=FALSE;
@@ -3831,7 +3852,7 @@ static int32 port_status_write( struct file *filp, const char *buff,unsigned lon
 					rtl8651_setAsicEthernetPHYDuplex(port,forceDuplex);
 					rtl8651_setAsicEthernetPHYAutoNeg(port,forceMode?FALSE:TRUE);
 					rtl8651_setAsicEthernetPHYAdvCapality(port,advCapability);
-					rtl8651_restartAsicEthernetPHYNway(port);
+					rtl8651_restartAsicEthernetPHYNway(port);					
 				}
 			}
 			

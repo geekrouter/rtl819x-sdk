@@ -256,6 +256,8 @@ static __inline__ void update_form_hander_name(webs_t wp)
 #define SET_PIN_MSG \
 	"Applied WPS PIN successfully!<br><br>" \
 	"You have to run Wi-Fi Protected Setup within 2 minutes."
+#define STOP_MSG \
+	"Applied WPS STOP successfully!<br>"
 #endif
 
 

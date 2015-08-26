@@ -38,7 +38,7 @@ struct nat_entry {
 
 struct nat_table {
 
-	int32						connNum;
+	int32						connNum;		/* MUST equal or more than actually conntrack number */
 	int32						freeEntryNum;
 	int32						tcp_timeout;
 	int32						udp_timeout;	

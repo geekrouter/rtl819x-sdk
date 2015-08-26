@@ -460,7 +460,11 @@ static ctl_table nf_ct_netfilter_table[] = {
 		.data		= &nf_conntrack_max,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
+#if defined(CONFIG_RTL_NF_CONNTRACK_GARBAGE_NEW)
+		.proc_handler	= &conntrack_dointvec,
+#else
 		.proc_handler	= proc_dointvec,
+#endif
 	},
 	{ .ctl_name = 0 }
 };

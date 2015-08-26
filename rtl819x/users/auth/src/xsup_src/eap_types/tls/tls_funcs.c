@@ -1011,6 +1011,7 @@ int tls_funcs_failed(struct generic_eap_data *thisint)
 int tls_funcs_cleanup(struct generic_eap_data *thisint)
 {
   int err=XENONE;
+  int counter;
   struct tls_vars *mytls_vars;
 
   debug_printf(DEBUG_EVERYTHING, "(TLS-FUNCS) Cleaning up!\n");
@@ -1024,6 +1025,31 @@ int tls_funcs_cleanup(struct generic_eap_data *thisint)
   mytls_vars = (struct tls_vars *)thisint->eap_data;
 
   err = tls_funcs_failed(thisint);
+
+  if(mytls_vars->ssl) {
+      // We don't want to send an alert to the other end..  So do a quiet
+      // shutdown.  This violates the TLS standard, but it needed to avoid
+      // confusing the other end of the connection when we want to do a
+      // reconnect!
+      SSL_set_quiet_shutdown(mytls_vars->ssl, 1);
+
+      // Now, close off our old session.
+      err = 0;
+      counter = 0;
+      while ((err == 0) && (counter < 60)) {
+        err = SSL_shutdown(mytls_vars->ssl);
+        if (err == 0) {
+            sleep(1);
+            counter++;
+        }
+      }
+      SSL_free(mytls_vars->ssl);
+      mytls_vars->ssl = NULL;
+  }
+  if(mytls_vars->ssl_in) {
+      BIO_free(mytls_vars->ssl_in);
+      mytls_vars->ssl_in = NULL;
+  }
 
   if (mytls_vars->sessionkeyconst != NULL)
     {

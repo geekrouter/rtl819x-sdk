@@ -18,7 +18,11 @@ include $(DIR_ROOT)/.config
 include $(DIR_USERS)/.config 
 include $(DIR_USERS)/goahead-2.1.1/LINUX/svn_version.h
 
+ifeq ($(CONFIG_APP_BOA), y)
+MGBIN = $(DIR_USERS)/boa/tools/mgbin
+else
 MGBIN = $(DIR_USERS)/goahead-2.1.1/LINUX/mgbin
+endif
 
 FW_BIN = image/fw.bin
 
@@ -32,6 +36,14 @@ ifndef CONFIG_ROOTFS_JFFS2
 LINUX_BIN  = image/linux.bin
 endif
 
+ifeq ($(CONFIG_APP_BOA), y)
+ifdef CONFIG_RTL_WEBPAGES_IN_ROOTFS
+WEBPAGE_BIN = 
+else
+WEBPAGE_BIN = image/webpages.bin
+WEBIMAGE_BIN = webpages.bin
+endif # CONFIG_RTL_WEBPAGES_IN_ROOTFS
+else
 ifdef CONFIG_RTL_WEBPAGES_IN_ROOTFS
 WEBPAGE_BIN = 
 ifdef CONFIG_RTL_8198_AP_ROOT
@@ -50,6 +62,7 @@ WEBPAGE_BIN = image/webpages-gw.bin
 WEBIMAGE_BIN = webpages-gw.bin
 endif	#CONFIG_RTL_8198_AP_ROOT
 endif	#CONFIG_RTL_WEBPAGES_IN_ROOTFS
+endif
 
 ifdef CONFIG_APP_SAMBA
 SAMBA_FLG = 1 
@@ -93,6 +106,7 @@ endif
 	$(ROMFSINST) -s /var/ppp /etc/ppp
 	$(ROMFSINST) home /home
 	$(ROMFSINST) -s bin/init /init
+ifneq ($(CONFIG_APP_BOA), y)
 ifdef CONFIG_RTL_WEBPAGES_IN_ROOTFS
 	cp $(DIR_USERS)/goahead-2.1.1/LINUX/$(WEBIMAGE_GZ) ./ 
 	tar xvfz $(WEBIMAGE_GZ)
@@ -102,11 +116,15 @@ ifdef CONFIG_RTL_WEBPAGES_IN_ROOTFS
 else
 	$(ROMFSINST) -s /var/web /web
 endif
+endif
 	$(ROMFSINST) -s /var/tmp /tmp
 	chmod 755 $(DIR_ROMFS)/etc/init.d/rcS
 
 ifdef CONFIG_RTL_WEBPAGES_IN_ROOTFS
 	sed -i "s/flash extr \/web/#flash extr \/web/" $(DIR_ROMFS)/etc/init.d/rcS
+endif
+ifeq ($(CONFIG_APP_BOA), y)
+	sed -i "s/webs&/boa/" $(DIR_ROMFS)/etc/init.d/rcS
 endif
 
 ifdef CONFIG_APP_SAMBA
@@ -148,13 +166,22 @@ else
 		echo "It it MP image"; \
 	else \
 		[ ! -f root.bin ] || cp -f root.bin $(DIR_IMAGE)/root.bin; \
-		egrep "^CONFIG_APP_GOAHEAD=y" $(DIR_USERS)/.config > GOAHEAD.test; \
-		if [ -s GOAHEAD.test ] ; then \
-			cp $(DIR_USERS)/goahead-2.1.1/LINUX/$(WEBIMAGE_BIN) $(DIR_IMAGE)/$(WEBIMAGE_BIN); \
+		egrep "^CONFIG_APP_BOA=y" $(DIR_USERS)/.config > BOA.test; \
+		if [ -s BOA.test ] ; then \
+			cp $(DIR_USERS)/boa/html/$(WEBIMAGE_BIN) $(DIR_IMAGE)/$(WEBIMAGE_BIN); \
 			$(MGBIN) -c -o $(FW_BIN) $(ROOT_BIN) $(WEBPAGE_BIN) $(LINUX_BIN); \
-			cd $(DIR_USERS)/goahead-2.1.1/LINUX; \
+			cd $(DIR_USERS)/boa/defconfig; \
 			mv *.dat $(DIR_ROOT)/boards/rtl8198/image; \
 			cd -; \
+		else \
+			egrep "^CONFIG_APP_GOAHEAD=y" $(DIR_USERS)/.config > GOAHEAD.test; \
+			if [ -s GOAHEAD.test ] ; then \
+				cp $(DIR_USERS)/goahead-2.1.1/LINUX/$(WEBIMAGE_BIN) $(DIR_IMAGE)/$(WEBIMAGE_BIN); \
+				$(MGBIN) -c -o $(FW_BIN) $(ROOT_BIN) $(WEBPAGE_BIN) $(LINUX_BIN); \
+				cd $(DIR_USERS)/goahead-2.1.1/LINUX; \
+				mv *.dat $(DIR_ROOT)/boards/rtl8198/image; \
+				cd -; \
+			fi; \
 		fi; \
 	fi; \
 	rm *.test

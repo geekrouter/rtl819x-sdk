@@ -5657,8 +5657,8 @@ printf("\r\n tmpBuf=[%s],__[%s-%u]\r\n",tmpBuf,__FILE__,__LINE__);
 						strcpy(tmpBuf, T("Get Join result failed!"));
 						goto ss_err;
 					}
-					if ( res != 0xff ) { // completed
-					
+					//if ( res != 0xff ) { // completed
+					if(res==STATE_Bss  || res==STATE_Ibss_Idle || res==STATE_Ibss_Active) { // completed	
 
 						break;
 					}
@@ -7194,6 +7194,7 @@ void updateVapWscDisable(int wlan_root,int value)
 void formWsc(webs_t wp, char_t *path, char_t *query)
 {
 	char_t *strVal, *submitUrl, *strResetUnCfg, *wlanIf;
+	char_t  *targetAPSsid, *targetAPMac; /* WPS2DOTX */
 	int intVal;
 	char tmpbuf[200];
 	int mode;
@@ -7202,6 +7203,11 @@ void formWsc(webs_t wp, char_t *path, char_t *query)
 	// 1104
 	int tmpint;	
 	char ifname[30];
+
+	// WPS2DOTX ; 2011-0428
+    int idx,idx2;
+	char pincodestr_b[20];	
+	// WPS2DOTX ; 2011-0428
 
 #if defined(CONFIG_RTL_92D_SUPPORT)
 	int wlanDisabled[2];
@@ -7230,6 +7236,11 @@ void formWsc(webs_t wp, char_t *path, char_t *query)
 	
 //displayPostDate(wp->postData);	
 	
+	/* support  special MAC , 2011-0505 WPS2DOTX */
+	
+	targetAPMac = websGetVar(wp, T("targetAPMac"), T(""));
+	targetAPSsid = websGetVar(wp, T("targetAPSsid"), T(""));
+	/* support  special SSID , 2011-0505 WPS2DOTX */
 	submitUrl = websGetVar(wp, T("submit-url"), T(""));
 
 	strResetUnCfg = websGetVar(wp, T("resetUnCfg"), T(""));
@@ -7386,6 +7397,18 @@ void formWsc(webs_t wp, char_t *path, char_t *query)
 		return;
 	}
 #endif //#if defined(UNIVERSAL_REPEATER) && defined(CONFIG_REPEATER_WPS_SUPPORT)
+
+
+/* support  special SSID , 2011-0505 WPS2DOTX */
+	strVal = websGetVar(wp, T("stopwsc"), T(""));
+	if (strVal[0]) {
+		system("echo 1 > /tmp/wscd_cancel");
+		OK_MSG2(STOP_MSG, ((mode==AP_MODE) ? "client" : "AP"), submitUrl);
+		return;
+	}
+/* support  special SSID , 2011-0505 WPS2DOTX */
+
+	
 	strVal = websGetVar(wp, T("triggerPIN"), T(""));
 	if (strVal[0]) {
 		int local_pin_changed = 0;		
@@ -7424,6 +7447,41 @@ void formWsc(webs_t wp, char_t *path, char_t *query)
 				run_init_script("bridge");
 			}
 			else {
+
+				/* support  special MAC , 2011-0505 ;WPS2DOTX*/
+				if(targetAPMac[0]){
+					unsigned char targetAPMacFilter[20];
+					int idx = 0;
+					int idx2 = 0;					
+					printf("before ,mac =%s len=%d \n",targetAPMac , strlen(targetAPMac));
+					for(idx;idx<strlen(targetAPMac);idx++){
+						if( _is_hex(targetAPMac[idx])){
+							targetAPMacFilter[idx2]=targetAPMac[idx];
+							idx2++;
+						}
+					}
+					
+					targetAPMacFilter[idx2]='\0';
+					
+					if(strlen(targetAPMacFilter)!=12){
+						printf("invaild MAC Addr Len\n\n");
+					}else{					
+						sprintf(tmpbuf, "iwpriv wlan%d set_mib wsc_specmac=%s ",wlan_idx, targetAPMacFilter);
+						printf("tmpbuf=%s\n",tmpbuf);
+						system(tmpbuf);						
+					}											
+					
+				}
+				if(targetAPSsid[0]){					
+					if(strlen(targetAPSsid)<= 32){
+						sprintf(tmpbuf, "iwpriv wlan%d set_mib wsc_specssid=\"%s\" ",wlan_idx, targetAPSsid);
+						system(tmpbuf);						
+					}else{					
+						printf("invaild SSID Len\n");
+					}											
+					
+				}				
+				/* support  special SSID , 2011-0505 WPS2DOTX */
 #if defined(FOR_DUAL_BAND)
 				if( (wlan0_mode == 0) && (wlan1_mode == 0) && (wlan0_disable == 0) && (wlan1_disable == 0))
 						sprintf(tmpbuf, "%s -sig_start %s", _WSC_DAEMON_PROG, "wlan0-wlan1");
@@ -7510,8 +7568,23 @@ void formWsc(webs_t wp, char_t *path, char_t *query)
 			}
 			else {			
 #ifndef NO_ACTION
-				sprintf(tmpbuf, "iwpriv %s set_mib pin=%s", WLAN_IF, strVal);
+				// WPS2DOTX ; 2011-0428 ; support the format pin code 1234-5670 (include "-")
+				memset(pincodestr_b,'\0',20);				
+				//printf("before filter pin code =%s , len =%d\n", strVal ,strlen(strVal));
+				idx2=0;
+				for(idx=0 ; idx <strlen(strVal) ; idx++){
+					printf("strVal[%d]=%x\n",idx,strVal[idx]);	
+					if(strVal[idx] >= '0' && strVal[idx]<= '9'){
+						pincodestr_b[idx2]=strVal[idx];	
+						idx2++;
+					}
+				}
+				
+				//printf("after filter pin code =%s , len =%d\n", pincodestr_b ,strlen(pincodestr_b));				
+				sprintf(tmpbuf, "iwpriv %s set_mib pin=%s", WLAN_IF, pincodestr_b);				
+				//printf("tmpbuf=%s\n",tmpbuf);
 				system(tmpbuf);
+				// WPS2DOTX ; 2011-0428 ; support the format pin code 1234-5670 (include "-")				
 #endif
 			}
 			OK_MSG1(SET_PIN_MSG, submitUrl);			

@@ -14,7 +14,9 @@
 
 #if defined(CONFIG_RTL_819X)
 /* by default disable */
-//#define FAST_PATH_SPI_ENABLED		1
+#if defined(CONFIG_FAST_PATH_SPI_ENABLED)
+#define FAST_PATH_SPI_ENABLED		1
+#endif
 #endif
 
 #include <linux/netfilter/nf_conntrack_common.h>

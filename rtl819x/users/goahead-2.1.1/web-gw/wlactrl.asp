@@ -12,6 +12,17 @@ function addClick()
   if (document.formWlAcAdd.wlanAcEnabled.selectedIndex == 0)
 	return true;
 
+	// WPS2DOTX  ; 4.2.7
+    wlanMode = <% write(getIndex("wlanMode")); %>;	
+	if(wlanMode==0 || wlanMode==3){
+      if (document.formWlAcAdd.wlanAcEnabled.selectedIndex == 1){	
+	    if(!confirm("if ACL allow list turn on ; WPS2.0 will be disabled")){
+		   return false;
+	    }
+     }
+   }
+   
+	
   if ( str.length == 0)
   	return true;
 

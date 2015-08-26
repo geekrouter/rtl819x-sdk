@@ -3268,7 +3268,7 @@ else if(!strcmp(argv[0],T("caCertExist")))
 
 		apmib_get(MIB_WLAN_11N_ONOFF_TKIP, (void *)&intVal);
 		apmib_get(MIB_WLAN_BAND, (void *)&wlanMode);
-		if(intVal == 0 && (wlanMode==8 || wlanMode==10 || wlanMode==11))
+		if(intVal == 0 && (wlanMode==8 || wlanMode==10 || wlanMode==11 || wlanMode==BAND_5G_11AN))
 			websWrite(wp, T("%s"),"<!--");
 		else
 			websWrite(wp, T("%s"),"");
@@ -3281,7 +3281,7 @@ else if(!strcmp(argv[0],T("caCertExist")))
 
 		apmib_get(MIB_WLAN_11N_ONOFF_TKIP, (void *)&intVal);
 		apmib_get(MIB_WLAN_BAND, (void *)&wlanMode);
-		if(intVal == 0 && (wlanMode==8 || wlanMode==10 || wlanMode==11))
+		if(intVal == 0 && (wlanMode==8 || wlanMode==10 || wlanMode==11 || wlanMode==BAND_5G_11AN))
 			websWrite(wp, T("%s"),"-->");
 		else
 			websWrite(wp, T("%s"),"");

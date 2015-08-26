@@ -322,7 +322,24 @@ static int DOT11_Process_Disconnect_Req(struct net_device *dev, struct iw_point 
 	DEBUG_INFO("802.1x issue disassoc sta:%02X%02X%02X%02X%02X%02X reason:%d\n",
 			hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5], Disconnect_Req->Reason);
 
-	issue_disassoc(priv, pstat->hwaddr, Disconnect_Req->Reason);
+#ifdef CLIENT_MODE
+	if(OPMODE & WIFI_STATION_STATE){
+
+		if((OPMODE&(  WIFI_AUTH_SUCCESS | WIFI_ASOC_STATE))
+				==(  WIFI_AUTH_SUCCESS | WIFI_ASOC_STATE))
+		{
+			issue_disassoc(priv, BSSID, _RSON_DEAUTH_STA_LEAVING_);					
+			OPMODE &= ~(WIFI_AUTH_SUCCESS | WIFI_ASOC_STATE);
+			//SME_DEBUG("!!issue disconnect at wlan!!\n");
+		}else{
+			return (-1);
+		} 
+
+	}else
+#endif
+	{
+		issue_disassoc(priv, pstat->hwaddr, Disconnect_Req->Reason);
+	}
 
 	SAVE_INT_AND_CLI(flags);
 	if (!list_empty(&pstat->asoc_list))
@@ -1164,6 +1181,10 @@ void DOT11_Indicate_MIC_Failure_Clnt(struct rtl8192cd_priv *priv, unsigned char 
 	Mic_Failure.IsMoreEvent = 0;
 	memcpy(&Mic_Failure.MACAddr, sa, MACADDRLEN);
 	DOT11_EnQueue((unsigned long)priv, priv->pevent_queue, (UINT8 *)&Mic_Failure, sizeof(DOT11_MIC_FAILURE));
+#endif
+#if defined(CLIENT_MODE) && defined(INCLUDE_WPA_PSK)
+	if (OPMODE & (WIFI_STATION_STATE | WIFI_ASOC_STATE))
+		psk_indicate_evt(priv, DOT11_EVENT_MIC_FAILURE, BSSID, NULL, 0);
 #endif
 	event_indicate(priv, sa, 5);
 #ifdef WIFI_WPAS

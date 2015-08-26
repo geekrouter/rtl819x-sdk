@@ -135,11 +135,6 @@
 	#define IO_TYPE_CAST	(unsigned int)
 #endif
 
-#if defined(RESERVE_TXDESC_FOR_EACH_IF) && (defined(UNIVERSAL_REPEATER) || defined(MBSSID))
-#define MAX_NUM(_x_, _y_)	(((_x_)>(_y_))? (_x_) : (_y_))
-#define MIN_NUM(_x_, _y_)	(((_x_)<(_y_))? (_x_) : (_y_))
-#endif
-
 extern unsigned char rfc1042_header[WLAN_LLC_HEADER_SIZE];
 #ifndef REG32
 	#define REG32(reg)	 	(*(volatile unsigned int *)(reg))
@@ -480,14 +475,13 @@ enum _skb_flag_ {
 };
 
 // Allocate net device socket buffer
+extern __MIPS16 __IRAM_IN_865X struct sk_buff *alloc_skb_from_queue(struct rtl8192cd_priv *priv);
 static __inline__ struct sk_buff *rtl_dev_alloc_skb(struct rtl8192cd_priv *priv,
 				unsigned int length, int flag, int could_alloc_from_kerenl)
 {
 	struct sk_buff *skb = NULL;
 
 //	skb = dev_alloc_skb(length);
-	extern  struct sk_buff *alloc_skb_from_queue(struct rtl8192cd_priv *priv);
-
 	skb = alloc_skb_from_queue(priv);
 
 	if (skb == NULL && could_alloc_from_kerenl)

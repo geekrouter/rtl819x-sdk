@@ -47,7 +47,8 @@ void __init bsp_serial_init(void)
 #if 1
 	s.uartclk = BSP_SYS_CLK_RATE;
     s.fifosize = 16;
-	s.flags = UPF_SKIP_TEST | UPF_LOW_LATENCY;
+	//s.flags = UPF_SKIP_TEST | UPF_LOW_LATENCY;
+	s.flags = UPF_SKIP_TEST;
 	s.mapbase = BSP_UART0_MAP_BASE;
 	//s.membase = ioremap_nocache(s.mapbase, BSP_UART0_MAPSIZE);
 	s.membase = ioremap_nocache(s.mapbase, 0x20);

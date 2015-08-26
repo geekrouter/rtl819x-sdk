@@ -27,11 +27,14 @@
 #include <net/rtl/rtl_types.h>
 #include <net/rtl/rtl865x_fdb_api.h>
 
-#if defined (CONFIG_RTL_LAYERED_DRIVER_L2)
-#if defined (CONFIG_RTL865X_LANPORT_RESTRICTION)
+#if	defined(CONFIG_RTL_819X)
+#include <net/rtl/features/rtl_ps_hooks.h>
+
+#if defined (CONFIG_RTL_LAYERED_DRIVER_L2)&& defined (CONFIG_RTL865X_LANPORT_RESTRICTION)
 #include "lan_restrict.h"
 #endif
-#endif
+
+#endif	/*	defined(CONFIG_RTL_819X)	*/
 
 #if defined(CONFIG_RTL_819X)
 static int fdb_entry_max = 2048;
@@ -46,10 +49,6 @@ void add_igmp_ext_entry(	struct net_bridge_fdb_entry *fdb ,unsigned char *srcMac
 void update_igmp_ext_entry(	struct net_bridge_fdb_entry *fdb ,unsigned char *srcMac , unsigned char portComeIn);
 void del_igmp_ext_entry(	struct net_bridge_fdb_entry *fdb ,unsigned char *srcMac , unsigned char portComeIn );
 static void br_igmp_fdb_expired(struct net_bridge_fdb_entry *ent);
-#endif
-
-#if defined(CONFIG_RTL_819X)
-#include <net/rtl/features/rtl_ps_hooks.h>
 #endif
 
 static struct kmem_cache *br_fdb_cache __read_mostly;
@@ -103,13 +102,9 @@ static inline void fdb_delete(struct net_bridge_fdb_entry *f)
 {
 	hlist_del_rcu(&f->hlist);
 	br_fdb_put(f);
-#if defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)
-#if defined (CONFIG_RTL865X_LANPORT_RESTRICTION)
-	rtl865x_delAuthLanFDBEntry(RTL865x_L2_TYPEII, f->addr.addr);
-#else
-	rtl865x_delLanFDBEntry(RTL865x_L2_TYPEII, f->addr.addr);
-#endif
-#endif
+	#if defined(CONFIG_RTL_819X)
+	rtl_fdb_delete_hooks(f);
+	#endif
 }
 
 void br_fdb_changeaddr(struct net_bridge_port *p, const unsigned char *newaddr)
@@ -252,17 +247,13 @@ static void br_igmp_fdb_expired(struct net_bridge_fdb_entry *ent)
 void br_fdb_cleanup(unsigned long _data)
 {
 	struct net_bridge *br = (struct net_bridge *)_data;
-#if defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)
-	int32 port_num;
-#if defined (CONFIG_RTL865X_LANPORT_RESTRICTION)
-	unsigned char swap_addr[ETHER_ADDR_LEN];
-#endif
-	int ret;
-	unsigned long hw_aging;
-#endif
 	unsigned long delay = hold_time(br);
 	unsigned long next_timer = jiffies + br->forward_delay;
 	int i;
+	#if defined (CONFIG_RTL865X_LANPORT_RESTRICTION) && defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)
+	int32 port_num;
+	unsigned char swap_addr[ETHER_ADDR_LEN];
+	#endif
 
 	spin_lock_bh(&br->hash_lock);
 	for (i = 0; i < BR_HASH_SIZE; i++) {
@@ -291,42 +282,19 @@ void br_fdb_cleanup(unsigned long _data)
 			if (f->is_static)
 				continue;
 
-		#if defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)			
-			port_num= -100
-			ret = rtl865x_arrangeFdbEntry(f->addr.addr, &port_num);
-
-			switch (ret) {
-				case RTL865X_FDBENTRY_450SEC:
-					hw_aging = jiffies;
-					break;
-				case RTL865X_FDBENTRY_300SEC:
-					hw_aging = jiffies -150*HZ;
-					break;
-				case RTL865X_FDBENTRY_150SEC:	
-					hw_aging = jiffies -300*HZ;
-					break;
-				case RTL865X_FDBENTRY_TIMEOUT:
-				case FAILED:
-				default:
-					hw_aging = 0;
-					break;					
-			}
-
-			if(time_before_eq(f->ageing_timer,  hw_aging))
-				f->ageing_timer = hw_aging;
-		#endif
-
+			#if defined(CONFIG_RTL_819X)
+			rtl_br_fdb_cleanup_hooks(br, f);
+			#endif
+			
 			this_timer = f->ageing_timer + delay;
 			if (time_before_eq(this_timer, jiffies)) {
-	#if defined (CONFIG_RTL865X_LANPORT_RESTRICTION) && defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)
+				#if defined (CONFIG_RTL865X_LANPORT_RESTRICTION) && defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)
 				/*try to find blocked l2 entry, then set it to authed*/
 				if (port_num != -100)
 				{
-/*					printk("\ntime out port num is %d\n", port_num);*/
 					if ((lan_restrict_getBlockAddr(port_num, swap_addr)) == SUCCESS)
 					{
-//						struct hlist_head *head = &br->hash[br_mac_hash(swap_addr)];
-/*									
+						/*									
 						printk("\n arrange block entry is %x %x %x %x %x %x\n", swap_addr[0],
 																swap_addr[1],
 																swap_addr[2],
@@ -334,11 +302,11 @@ void br_fdb_cleanup(unsigned long _data)
 																swap_addr[4],
 																swap_addr[5]);
 																
-*/
+						*/
 						rtl865x_addAuthFDBEntry(swap_addr, TRUE, port_num);
 					}
 				}
-	#endif								
+				#endif	/* #if defined (CONFIG_RTL865X_LANPORT_RESTRICTION) && defined(CONFIG_RTL_LAYERED_DRIVER) && defined(CONFIG_RTL_LAYERED_DRIVER_L2) && defined(CONFIG_RTL865X_SYNC_L2)	*/
 
 				fdb_delete(f);
 			} else if (time_before(this_timer, next_timer))

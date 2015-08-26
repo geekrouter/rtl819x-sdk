@@ -1768,7 +1768,7 @@ void phy_ReloadLCKSetting(struct rtl8192cd_priv *priv)
 {
 	unsigned int	eRFPath = priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_5G? RF92CD_PATH_A:(priv->pmib->dot11RFEntry.macPhyMode==SINGLEMAC_SINGLEPHY?RF92CD_PATH_B:RF92CD_PATH_A);
 	unsigned int 	u4tmp = 0;
-	unsigned char	bNeedPowerDownRadio = FALSE;
+//	unsigned char	bNeedPowerDownRadio = FALSE;
 	unsigned int 	channel = priv->pshare->RegRF18[eRFPath]&0xff;
 	//unsigned int 	channel =  PHY_QueryRFReg(priv, eRFPath, rRfChannel, 0xff, 1);
 
@@ -2044,13 +2044,13 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 
 void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 {
-	u8		ThermalValue = 0, delta, delta_LCK, delta_IQK, delta_RxGain, index, offset, ThermalValue_AVG_count = 0;
+	u8		ThermalValue = 0, delta, delta_LCK, delta_IQK, delta_RxGain, index[2], offset, ThermalValue_AVG_count = 0;
 	u32		ThermalValue_AVG = 0;
-	int 	ele_A, ele_D, X, value32, Y, ele_C;
+	int 	ele_A, ele_D, /*TempCCk,*/ X, value32, Y, ele_C;
 	int		OFDM_index[2], CCK_index=0;
 	int	   	i = 0;
 	char	is2T = ((priv->pmib->dot11RFEntry.macPhyMode != DUALMAC_DUALPHY) ?1 :0);
-	u8 		OFDM_min_index = 6, rf=1; //OFDM BB Swing should be less than +3.0dB, which is required by Arthur	u1Byte			OFDM_min_index = 6, rf; //OFDM BB Swing should be less than +3.0dB, which is required by Arthur
+	u8 		OFDM_min_index = 6, OFDM_min_index_internalPA = 5, rf=1, channel; //OFDM BB Swing should be less than +3.0dB, which is required by Arthur	u1Byte			OFDM_min_index = 6, rf; //OFDM BB Swing should be less than +3.0dB, which is required by Arthur
 
 	u8		index_mapping[5][index_mapping_NUM] = {
 					{0,	1,	3,	6,	8,	9,				//5G, path A/MAC 0, decrease power
@@ -2065,12 +2065,68 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 					6,	7,	7,	8,	9,	10,	10},
 					};
 
+#if defined(RTL8192D_INT_PA)
+
+	u8		index_mapping_internalPA[8][index_mapping_NUM] = {
+					 {0,  1, 3, 4, 6, 7,	//5G, path A/MAC 0, ch36-64, decrease power
+					 9,  11,  13,  15,	16,  16,  16},
+					 {0,  1, 3, 4, 6, 7,	 //5G, path A/MAC 0, ch36-64, increase power
+					 9,  11,  13,  15,	16,  18,  20},
+					 {0,  1, 3, 4, 6, 7,	//5G, path A/MAC 0, ch100-165, decrease power
+					 9, 11,  13,  15,  16,	16,  16},
+					 {0,  1, 3, 4, 6, 7,	 //5G, path A/MAC 0, ch100-165, increase power
+					 9,  11,  13,  15,	16,  18,  20},
+					 {0,  1, 3, 4, 6, 7,	//5G, path B/MAC 1, ch36-64, decrease power
+					 9, 11,  13,  15,  16,	16,  16},
+					 {0,  1, 3, 4, 6, 7,	 //5G, path B/MAC 1, ch36-64, increase power
+					 9,  11,  13,  15,	16,  18,  20},
+					 {0,  1, 3, 4, 6, 7,	//5G, path B/MAC 1, ch100-165, decrease power
+					 9, 11, 13,  15,  16,  16,	16},
+					 {0,  1, 3, 4, 6, 7,	 //5G, path B/MAC 1, ch100-165, increase power
+					 9,  11,  13,  15,	16,  18,  20},
+					};	
+
+	u8			bInteralPA[2];	
+				
+#endif
+
+#ifdef DPK_92D
+	short	index_mapping_DPK[4][index_mapping_DPK_NUM]={
+				{0, 0,	1,	2,	2,				//path A current thermal > PG thermal
+				3,	4,	5,	5,	6,		
+				7,	7,	8,	9,	9},
+				{0, 0,	-1, -2, -3, 			//path A current thermal < PG thermal
+				-3, -4, -5, -6, -6, 	
+				-7, -8, -9, -9, -10},
+				{0, 0,	1,	2,	2,				//path B current thermal > PG thermal
+				3,	4,	5,	5,	6,		
+				7,	7,	8,	9,	9},
+				{0, 0,	-1, -2, -3, 			//path B current thermal < PG thermal
+				-3, -4, -5, -6, -6, 	
+				-7, -8, -9, -9, -10}					
+				};
+
+	u8		delta_DPK;
+	short	index_DPK[2] = { 0xb68,	0xb6c }, value_DPK, value_DPK_shift;
+	int j;
+
+	if(priv->pshare->bDPKworking) {
+		DEBUG_INFO("DPK in progress abort tx power tracking \n");
+		return; 
+	}
+
+#endif
+
 #ifdef MP_TEST
 	if ((OPMODE & WIFI_MP_STATE) || priv->pshare->rf_ft_var.mp_specific) {
+		channel=priv->pshare->working_channel;
 		if(priv->pshare->mp_txpwr_tracking == FALSE)
 			return;
-	}
+	} else
 #endif
+	{
+		channel = (priv->pmib->dot11RFEntry.dot11channel);
+	}
 
 	if (priv->pshare->pwr_trk_ongoing==0) {
 		PHY_SetRFReg(priv, RF92CD_PATH_A, RF_T_METER_92D, bMask20Bits, 0x30000);
@@ -2079,6 +2135,9 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 	}else{
 		ThermalValue =(unsigned char)PHY_QueryRFReg(priv, RF92CD_PATH_A, RF_T_METER_92D, 0xf800, 1);
 		priv->pshare->pwr_trk_ongoing = 0;
+#ifdef DPK_92D
+		priv->pshare->ThermalValue_DPKtrack = ThermalValue;
+#endif
 	}
 	DEBUG_INFO("Readback Thermal Meter = 0x%lx pre thermal meter 0x%lx EEPROMthermalmeter 0x%lx\n", ThermalValue,
 				priv->pshare->ThermalValue, priv->pmib->dot11RFEntry.ther);
@@ -2113,7 +2172,12 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 				}
 			}
 		}
-		priv->pshare->CCK_index0 = get_CCK_swing_index(priv);
+
+		if(priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_2G) {
+			priv->pshare->CCK_index0 = get_CCK_swing_index(priv);
+		} else {
+			priv->pshare->CCK_index0 = 12;
+		}
 
 		if(!priv->pshare->ThermalValue)	{
 			priv->pshare->ThermalValue = priv->pmib->dot11RFEntry.ther;
@@ -2122,7 +2186,9 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 #ifdef RX_GAIN_TRACK_92D
 			priv->pshare->ThermalValue_RxGain = priv->pmib->dot11RFEntry.ther;
 #endif
-
+#ifdef DPK_92D
+			priv->pshare->ThermalValue_DPK = ThermalValue;
+#endif
 			for(i = 0; i < rf; i++)
 				priv->pshare->OFDM_index[i] = priv->pshare->OFDM_index0[i];
 			priv->pshare->CCK_index = priv->pshare->CCK_index0;
@@ -2158,14 +2224,57 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 
 		getDeltaValue(priv);
 
+#ifdef DPK_92D
+
+		if(priv->pshare->bDPKstore)	{
+
+			priv->pshare->ThermalValue_DPK = ThermalValue;
+			delta_DPK = 0;
+
+			for(j = 0; j < rf; j++)	{
+
+				if(priv->pshare->ThermalValue_DPKstore > priv->pmib->dot11RFEntry.ther)
+					value_DPK_shift = index_mapping_DPK[j*2][priv->pshare->ThermalValue_DPKstore- priv->pmib->dot11RFEntry.ther];
+				else
+					value_DPK_shift = index_mapping_DPK[j*2+1][priv->pmib->dot11RFEntry.ther- priv->pshare->ThermalValue_DPKstore];
+
+				for(i = 0; i < index_mapping_DPK_NUM; i++) 	{
+					priv->pshare->index_mapping_DPK_current[j*2][i] = 
+						index_mapping_DPK[j*2][i]-value_DPK_shift;
+					priv->pshare->index_mapping_DPK_current[j*2+1][i] = 
+						index_mapping_DPK[j*2+1][i]-value_DPK_shift;										
+				}				
+			}		
+		}
+		else
+		{
+			delta_DPK = RTL_ABS(ThermalValue, priv->pshare->ThermalValue_DPK);
+		}
+
+		for(j = 0; j < rf; j++)			{
+			if(!priv->pshare->bDPKdone[j])
+				priv->pshare->OFDM_min_index_internalPA_DPK[j] = 0;
+		}
+
+#endif
+
 #if 1
 		if ((delta_LCK > priv->pshare->Delta_LCK) && (priv->pshare->Delta_LCK != 0)) {
 			priv->pshare->ThermalValue_LCK = ThermalValue;
 			PHY_LCCalibrate_92D(priv);
 		}
 #endif
-		if(delta > 0)	{
-
+		if(delta > 0
+#ifdef DPK_92D
+			||(priv->pshare->bDPKstore)			
+#endif
+		){
+			if(delta == 0 && priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_2G)
+				goto TxPowerDPK;
+#ifdef DPK_92D
+			if(priv->pshare->bDPKstore)
+				priv->pshare->bDPKstore = FALSE;
+#endif
 			delta	= RTL_ABS(ThermalValue, priv->pmib->dot11RFEntry.ther);
 
 			//calculate new OFDM / CCK offset
@@ -2175,9 +2284,9 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 					offset = 4;
 
 					if(delta > index_mapping_NUM-1)
-						index = index_mapping[offset][index_mapping_NUM-1];
+						index[0] = index_mapping[offset][index_mapping_NUM-1];
 					else
-						index = index_mapping[offset][delta];
+						index[0] = index_mapping[offset][delta];
 
 					if(ThermalValue > priv->pmib->dot11RFEntry.ther)	{
 						for(i = 0; i < rf; i++)
@@ -2186,35 +2295,67 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 					}
 					else	{
 						for(i = 0; i < rf; i++)
-							OFDM_index[i] = priv->pshare->OFDM_index[i] + index;
-						CCK_index = priv->pshare->CCK_index + index;
+							OFDM_index[i] = priv->pshare->OFDM_index[i] + index[0];
+						CCK_index = priv->pshare->CCK_index + index[0];
 					}
 				} else if (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_5G) {
 					for(i = 0; i < rf; i++){
-						if(priv->pshare->wlandev_idx == 1 || i == 1)
-							offset = 2;
+
+#if defined(RTL8192D_INT_PA)
+
+						if (priv->pmib->dot11RFEntry.macPhyMode == DUALMAC_DUALPHY && priv->pshare->wlandev_idx==1)		//MAC 1 5G
+							bInteralPA[i] = priv->pshare->phw->InternalPA5G[1];
 						else
-							offset = 0;
+							bInteralPA[i] = priv->pshare->phw->InternalPA5G[i];	
+
+						if(bInteralPA[i]) {
+							if(priv->pshare->wlandev_idx == 1 || i == 1/*rf*/)
+								offset = 4;
+							else
+								offset = 0;
+							if(channel >= 100 && channel <= 165)
+								offset += 2;													
+						}
+						else
+#endif
+						{
+							if(priv->pshare->wlandev_idx == 1 || i == 1)
+								offset = 2;
+							else
+								offset = 0;
+						}
 
 						if(ThermalValue > priv->pmib->dot11RFEntry.ther) //set larger Tx power
 							offset++;
-
-						if(delta > index_mapping_NUM-1)
-							index = index_mapping[offset][index_mapping_NUM-1];
-						else
-							index = index_mapping[offset][delta];
+#if defined(RTL8192D_INT_PA)
+						if(bInteralPA[i]) {
+							if(delta > index_mapping_NUM-1)
+								index[i] = index_mapping_internalPA[offset][index_mapping_NUM-1];
+							else
+								index[i] = index_mapping_internalPA[offset][delta];
+						} else
+#endif
+						{
+							if(delta > index_mapping_NUM-1)
+								index[i] = index_mapping[offset][index_mapping_NUM-1];
+							else
+								index[i] = index_mapping[offset][delta];
+						}
 
 						if(ThermalValue > priv->pmib->dot11RFEntry.ther) //set larger Tx power
 						{
-							OFDM_index[i] = priv->pshare->OFDM_index[i] -index;
+#if 0						
+							if(bInteralPA[i] && ThermalValue > 0x12)
+								index[i] = ((delta/2)*3+(delta%2));	
+#endif							
+							OFDM_index[i] = priv->pshare->OFDM_index[i] -index[i];
 						}
 						else
 						{
-							OFDM_index[i] = priv->pshare->OFDM_index[i] + index;
+							OFDM_index[i] = priv->pshare->OFDM_index[i] + index[i];
 						}
 					}
 				}
-
 
 				if(is2T)
 				{
@@ -2229,10 +2370,32 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 
 				for(i = 0; i < rf; i++)
 				{
-					if(OFDM_index[i] > OFDM_TABLE_SIZE_92D-1)
+					if(OFDM_index[i] > OFDM_TABLE_SIZE_92D-1) {
 						OFDM_index[i] = OFDM_TABLE_SIZE_92D-1;
-					else if (OFDM_index[i] < OFDM_min_index)
+					}
+					else if(priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_2G) {
+						if (OFDM_index[i] < (OFDM_min_index_internalPA))
+							OFDM_index[i] = (OFDM_min_index_internalPA);
+					} else if(bInteralPA[i]) {
+#ifdef DPK_92D
+						if (OFDM_index[i] < (OFDM_min_index_internalPA+ priv->pshare->OFDM_min_index_internalPA_DPK[i]))
+						{
+							priv->pshare->TxPowerLevelDPK[i] = OFDM_min_index_internalPA+ priv->pshare->OFDM_min_index_internalPA_DPK[i]-OFDM_index[i];
+							OFDM_index[i] = (OFDM_min_index_internalPA+ priv->pshare->OFDM_min_index_internalPA_DPK[i]);				
+						}
+						else
+						{
+							priv->pshare->TxPowerLevelDPK[i] = 0;
+						}
+#else
+                                                if (OFDM_index[i] < (OFDM_min_index_internalPA))
+                                                {
+                                                        OFDM_index[i] = (OFDM_min_index_internalPA);                   
+                                                }
+#endif				
+					} else if(OFDM_index[i] < OFDM_min_index) {
 						OFDM_index[i] = OFDM_min_index;
+					}
 				}
 
 				if (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_2G){
@@ -2240,12 +2403,9 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 						CCK_index = CCK_TABLE_SIZE_92D-1;
 					else if (CCK_index < 0)
 						CCK_index = 0;
-
 				}
 
-
-				if(is2T)
-				{
+				if(is2T) {
 					DEBUG_INFO("new OFDM_A_index=0x%x, OFDM_B_index=0x%x, CCK_index=0x%x\n",
 							OFDM_index[0], OFDM_index[1], CCK_index);
 				}
@@ -2263,8 +2423,7 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 				X = priv->pshare->RegE94;
 				Y = priv->pshare->RegE9C;
 
-				if(X != 0)
-				{
+				if(X != 0 && (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_2G)){
 					if ((X & 0x00000200) != 0)
 						X = X | 0xFFFFFC00;
 					ele_A = ((X * ele_D)>>8)&0x000003FF;
@@ -2290,8 +2449,14 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 					PHY_SetBBReg(priv, rOFDM0_XATxIQImbalance, bMaskDWord, OFDMSwingTable_92D[OFDM_index[0]]);
 					PHY_SetBBReg(priv, rOFDM0_XCTxAFE, bMaskH4Bits, 0x00);
 					PHY_SetBBReg(priv, rOFDM0_ECCAThreshold, BIT(24), 0x00);
+#ifdef MP_TEST
+					if ((priv->pshare->rf_ft_var.mp_specific) && (!is2T)) {
+						unsigned char str[50];
+						sprintf(str, "patha=%d,pathb=%d", priv->pshare->mp_txpwr_patha, priv->pshare->mp_txpwr_pathb);
+						mp_set_tx_power(priv, str);
+					}
+#endif
 				}
-
 				DEBUG_INFO("TxPwrTracking for interface %d path A: X = 0x%x, Y = 0x%x ele_A = 0x%x ele_C = 0x%x ele_D = 0x%x\n",
 							priv->pshare->wlandev_idx, X, Y, ele_A, ele_C, ele_D);
 
@@ -2310,7 +2475,7 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 					X = priv->pshare->RegEB4;
 					Y = priv->pshare->RegEBC;
 
-					if(X != 0){
+					if(X != 0 && (priv->pmib->dot11RFEntry.phyBandSelect == PHY_BAND_2G)){
 						if ((X & 0x00000200) != 0)	//consider minus
 							X = X | 0xFFFFFC00;
 						ele_A = ((X * ele_D)>>8)&0x000003FF;
@@ -2335,6 +2500,14 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 						PHY_SetBBReg(priv, rOFDM0_XBTxIQImbalance, bMaskDWord, OFDMSwingTable_92D[OFDM_index[1]]);
 						PHY_SetBBReg(priv, rOFDM0_XDTxAFE, bMaskH4Bits, 0x00);
 						PHY_SetBBReg(priv, rOFDM0_ECCAThreshold, BIT(28), 0x00);
+#ifdef MP_TEST
+					if ((priv->pshare->rf_ft_var.mp_specific) ) {
+						unsigned char str[50];
+						sprintf(str, "patha=%d,pathb=%d", priv->pshare->mp_txpwr_patha, priv->pshare->mp_txpwr_pathb);
+						mp_set_tx_power(priv, str);
+
+					}
+#endif				
 					}
 
 					DEBUG_INFO("TxPwrTracking path B: X = 0x%x, Y = 0x%x ele_A = 0x%x ele_C = 0x%x ele_D = 0x%x\n",
@@ -2346,6 +2519,38 @@ void tx_power_tracking_92D(struct rtl8192cd_priv *priv)
 			}
 		}
 
+TxPowerDPK:
+#ifdef DPK_92D
+		{
+			char bNOPG = FALSE;
+			unsigned char pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevelHT40_1S_A[channel-1];
+			if (priv->pmib->dot11RFEntry.phyBandSelect & PHY_BAND_5G)
+				pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_A[channel-1];
+#ifdef CONFIG_RTL_92D_DMDP			
+			if ((priv->pmib->dot11RFEntry.macPhyMode==DUALMAC_DUALPHY) &&
+				(priv->pshare->wlandev_idx == 1) && (priv->pmib->dot11RFEntry.phyBandSelect & PHY_BAND_5G))
+					pwrlevelHT40_1S_A = priv->pmib->dot11RFEntry.pwrlevel5GHT40_1S_B[channel-1];
+			if (pwrlevelHT40_1S_A == 0)
+				bNOPG = TRUE;
+#endif
+
+			//for DPK
+			if(delta_DPK > 0 && !bNOPG /*&& pHalData->bDPKdone*/) {
+				for(i = 0; i < rf; i++) {
+					if(bInteralPA[i] && priv->pshare->bDPKdone[i]) {				
+						if(ThermalValue > priv->pmib->dot11RFEntry.ther) 	
+							value_DPK = priv->pshare->index_mapping_DPK_current[i*2][ThermalValue-priv->pmib->dot11RFEntry.ther];
+						else
+							value_DPK = priv->pshare->index_mapping_DPK_current[i*2+1][priv->pmib->dot11RFEntry.ther-ThermalValue];
+						
+						PHY_SetBBReg(priv, index_DPK[i], 0x7c00, value_DPK);						
+					}
+				}				
+				priv->pshare->ThermalValue_DPK = ThermalValue;
+			}
+		}
+#endif
+		priv->pshare->pwr_trk_ongoing = 0;
 #if 1
 		if ((delta_IQK > priv->pshare->Delta_IQK) && (priv->pshare->Delta_IQK != 0)) {
 			priv->pshare->ThermalValue_IQK = ThermalValue;
@@ -2587,7 +2792,7 @@ void IQK_92D_5G_phy0_n(struct rtl8192cd_priv *priv)
 	unsigned int ADDA_REG[IQK_ADDA_REG_NUM] = {0x85c, 0xe6c, 0xe70, 0xe74,	0xe78, 0xe7c, 0xe80, 0xe84,
 												0xe88, 0xe8c, 0xed0, 0xed4, 0xed8, 0xedc, 0xee0, 0xeec};
 
-	printk(">> %s \n",__FUNCTION__);
+//	printk(">> %s \n",__FUNCTION__);
 #ifdef CONFIG_RTL_8198
 	REG32(BSP_WDTCNR) |=  1 << 23;
 #endif
@@ -2708,7 +2913,7 @@ void IQK_92D_5G_phy0_n(struct rtl8192cd_priv *priv)
 		PHY_SetBBReg(priv, 0x870, BIT(6)|BIT(5), 3);
 		PHY_SetBBReg(priv, 0x860, BIT(11)|BIT(10), 3);
 		 */
-		PHY_SetBBReg(priv, 0x870, bMaskDWord, 0x0f600700);	// 01/11/2011 update
+		PHY_SetBBReg(priv, 0x870, bMaskDWord, 0x07000f60);	// 01/11/2011 update
 		PHY_SetBBReg(priv, 0x860, bMaskDWord, 0x66e60e30);	// 01/11/2011 update
 #endif
 		/*

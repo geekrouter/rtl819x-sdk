@@ -42,6 +42,7 @@
 *
 * ---------------------------------------------------------------
 */
+
 #include <linux/skbuff.h>
 #include <net/rtl/rtl_types.h>
 #include <net/rtl/rtl_glue.h>
@@ -62,7 +63,9 @@ extern void (*_dma_cache_wback_inv)(unsigned long start, unsigned long size);
 /* RX Ring */
 static uint32*  rxPkthdrRing[RTL865X_SWNIC_RXRING_HW_PKTDESC];                 /* Point to the starting address of RX pkt Hdr Ring */
 __DRAM_FWD static uint32   rxPkthdrRingCnt[RTL865X_SWNIC_RXRING_HW_PKTDESC];              /* Total pkt count for each Rx descriptor Ring */
+#if	defined(DELAY_REFILL_ETH_RX_BUF)	
 __DRAM_FWD static uint32   rxPkthdrRefillThreshold[RTL865X_SWNIC_RXRING_HW_PKTDESC];              /* Ether refill threshold for each Rx descriptor Ring */
+#endif
 
 /* TX Ring */
 static uint32*  txPkthdrRing[RTL865X_SWNIC_TXRING_HW_PKTDESC];             /* Point to the starting address of TX pkt Hdr Ring */
@@ -260,37 +263,6 @@ static void release_pkthdr(struct sk_buff  *skb, int idx)
 }
 
 __IRAM_FWD
-static void increase_rx_idx_release_pkthdr(struct sk_buff  *skb, int idx)
-{
-	struct rtl_pktHdr *pReadyForHw;
-	uint32 mbufIndex;
-	unsigned long flags;
-
-	_dma_cache_wback_inv((unsigned long)skb->head, skb->truesize);
-	local_irq_save(flags);
-
-	if ( ++currRxPkthdrDescIndex[idx] == rxPkthdrRingCnt[idx] ) {
-		currRxPkthdrDescIndex[idx] = 0;
-		#if	defined(DELAY_REFILL_ETH_RX_BUF)
-		rxDescCrossBoundFlag[idx]++;
-		#endif
-	}
-
-	pReadyForHw = (struct rtl_pktHdr *)(rxPkthdrRing[idx][rxDescReadyForHwIndex[idx]] & 
-						~(DESC_OWNED_BIT | DESC_WRAP));
-	mbufIndex = ((uint32)(pReadyForHw->ph_mbuf) - (rxMbufRing[0] & ~(DESC_OWNED_BIT | DESC_WRAP))) /
-					(sizeof(struct rtl_mBuf));
-	
-	pReadyForHw->ph_mbuf->m_data = skb->data;
-	pReadyForHw->ph_mbuf->m_extbuf = skb->data;
-	pReadyForHw->ph_mbuf->skb = skb;
-
-	rxMbufRing[mbufIndex] |= DESC_SWCORE_OWNED;
-	set_RxPkthdrRing_OwnBit(idx);
-	local_irq_restore(flags);
-}
-
-__IRAM_FWD
 int check_rx_pkthdr_ring(int idx, int *return_idx)
 {
 	int i;
@@ -361,10 +333,50 @@ _ret1:
 	local_irq_restore(flags);
 	return ret;
 }
-#else //DELAY_REFILL_ETH_RX_BUF
-static void release_pkthdr(struct sk_buff  *skb, int idx)
-{}
 #endif //DELAY_REFILL_ETH_RX_BUF
+
+__IRAM_FWD
+static void increase_rx_idx_release_pkthdr(struct sk_buff  *skb, int idx)
+{
+	struct rtl_pktHdr *pReadyForHw;
+	uint32 mbufIndex;
+	unsigned long flags;
+
+	_dma_cache_wback_inv((unsigned long)skb->head, skb->truesize);
+	local_irq_save(flags);
+
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
+	pReadyForHw = (struct rtl_pktHdr *)(rxPkthdrRing[idx][rxDescReadyForHwIndex[idx]] & 
+						~(DESC_OWNED_BIT | DESC_WRAP));
+#else
+	pReadyForHw = (struct rtl_pktHdr *)(rxPkthdrRing[idx][currRxPkthdrDescIndex[idx]] & 
+						~(DESC_OWNED_BIT | DESC_WRAP));
+
+	rxPkthdrRing[idx][currRxPkthdrDescIndex[idx]] |= DESC_SWCORE_OWNED;
+#endif
+
+	if ( ++currRxPkthdrDescIndex[idx] == rxPkthdrRingCnt[idx] ) {
+		currRxPkthdrDescIndex[idx] = 0;
+		#if	defined(DELAY_REFILL_ETH_RX_BUF)
+		rxDescCrossBoundFlag[idx]++;
+		#endif
+	}
+
+	mbufIndex = ((uint32)(pReadyForHw->ph_mbuf) - (rxMbufRing[0] & ~(DESC_OWNED_BIT | DESC_WRAP))) /
+					(sizeof(struct rtl_mBuf));
+	
+	pReadyForHw->ph_mbuf->m_data = skb->data;
+	pReadyForHw->ph_mbuf->m_extbuf = skb->data;
+	pReadyForHw->ph_mbuf->skb = skb;
+
+	rxMbufRing[mbufIndex] |= DESC_SWCORE_OWNED;
+	
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
+	set_RxPkthdrRing_OwnBit(idx);
+#endif
+	
+	local_irq_restore(flags);
+}
 
 __IRAM_FWD
 static int __swNic_geRxRingIdx(uint32 rxRingIdx, uint32 *currRxPktDescIdx)
@@ -546,15 +558,15 @@ int32 swNic_flushRxRingByPriority(int priority)
 *************************************************************************/
 #define	RTL_NIC_RX_RETRY_MAX		(256)
 
-#if	defined(DELAY_REFILL_ETH_RX_BUF)
+//#if	defined(DELAY_REFILL_ETH_RX_BUF)
 #define	RTL_ETH_NIC_DROP_RX_PKT_RESTART		\
 	do {\
 		increase_rx_idx_release_pkthdr(pPkthdr->ph_mbuf->skb, rxRingIdx); \
 		REG32(CPUIISR) = (MBUF_DESC_RUNOUT_IP_ALL|PKTHDR_DESC_RUNOUT_IP_ALL); \
 	} while(0)
-#else
-#define	RTL_ETH_NIC_DROP_RX_PKT_RESTART		#error	"check here"
-#endif
+//#else
+//#define	RTL_ETH_NIC_DROP_RX_PKT_RESTART		#error	"check here"
+//#endif
 
 __MIPS16
 __IRAM_FWD
@@ -612,13 +624,13 @@ get_next:
 		{
 			info->input = pPkthdr->ph_mbuf->skb;
 			info->len = pPkthdr->ph_len - 4;	
-			#if	defined(DELAY_REFILL_ETH_RX_BUF)
+//			#if	defined(DELAY_REFILL_ETH_RX_BUF)
 			/* Increment index */
 			increase_rx_idx_release_pkthdr(skb, rxRingIdx);
-			#else
-			pPkthdr->ph_mbuf->m_data = pPkthdr->ph_mbuf->m_extbuf = buf;
-			pPkthdr->ph_mbuf->skb = skb;
-			#endif
+//			#else
+//			pPkthdr->ph_mbuf->m_data = pPkthdr->ph_mbuf->m_extbuf = buf;
+//			pPkthdr->ph_mbuf->skb = skb;
+//			#endif
 			REG32(CPUIISR) = (MBUF_DESC_RUNOUT_IP_ALL|PKTHDR_DESC_RUNOUT_IP_ALL);
 		}
 #if	defined(DELAY_REFILL_ETH_RX_BUF)
@@ -892,6 +904,8 @@ void swNic_freeRxBuf(void)
 }
 
 #if defined(CONFIG_RTL_REINIT_SWITCH_CORE)
+
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
 int swNic_refillRxRing(void)
 {
 	unsigned long flags;
@@ -919,6 +933,7 @@ int swNic_refillRxRing(void)
 	local_irq_restore(flags);
 	return 0;
 }
+#endif
 
 void swNic_freeTxRing(void)
 {
@@ -1036,7 +1051,9 @@ int32 swNic_reConfigRxTxRing(void)
 int32 swNic_reInit(void)
 {
 	swNic_freeTxRing();
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
 	swNic_refillRxRing();
+#endif
 	swNic_reConfigRxTxRing();
 	return SUCCESS;
 }
@@ -1090,12 +1107,14 @@ int32 swNic_init(uint32 userNeedRxPkthdrRingCnt[RTL865X_SWNIC_RXRING_HW_PKTDESC]
 	extPortMaskToPortNum[6] = 5;
 	extPortMaskToPortNum[7] = 5;
 	
+#if	defined(DELAY_REFILL_ETH_RX_BUF)	
 	rxPkthdrRefillThreshold[0] = ETH_REFILL_THRESHOLD;
 	rxPkthdrRefillThreshold[1] = ETH_REFILL_THRESHOLD1;
 	rxPkthdrRefillThreshold[2] = ETH_REFILL_THRESHOLD2;
 	rxPkthdrRefillThreshold[3] = ETH_REFILL_THRESHOLD3;
 	rxPkthdrRefillThreshold[4] = ETH_REFILL_THRESHOLD4;
 	rxPkthdrRefillThreshold[5] = ETH_REFILL_THRESHOLD5;
+#endif
 
 	#if defined(CONFIG_RTL8196C_REVISION_B)
 	rtl_chip_version = REG32(REVR);
@@ -1334,9 +1353,13 @@ int32	rtl_dumpRxRing(void)
 
 	for(idx=0;idx<RTL865X_SWNIC_RXRING_HW_PKTDESC;idx++)
 	{
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
 		printk("**********************************************\nRxRing%d: cnt %d crossFlags[%d]\n",
 			idx, rxPkthdrRingCnt[idx], rxDescCrossBoundFlag[idx]);
-
+#else
+		printk("**********************************************\nRxRing%d: cnt %d\n",
+			idx, rxPkthdrRingCnt[idx]);
+#endif
 		/*	skip the null rx ring */
 		if (rxPkthdrRingCnt[idx]==0)
 			continue;
@@ -1346,11 +1369,18 @@ int32	rtl_dumpRxRing(void)
 		{
 			pPkthdr = (struct rtl_pktHdr *) (rxPkthdrRing[idx][cnt] & ~(DESC_OWNED_BIT | DESC_WRAP));
 			
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
 			printk("  idx[%03d]: 0x%p-->mbuf[0x%p],skb[0x%p]%s%s%s%s\n",  cnt, pPkthdr, pPkthdr->ph_mbuf, pPkthdr->ph_mbuf->skb,
 				(rxPkthdrRing[idx][cnt]&DESC_OWNED_BIT)==DESC_RISC_OWNED?" :CPU":" :SWCORE", 
 				(rxPkthdrRing[idx][cnt]&DESC_WRAP)!=0?" :WRAP":"",
 				cnt==currRxPkthdrDescIndex[idx]?"  <===currIdx":"",
 				cnt ==rxDescReadyForHwIndex[idx]?" <===readyForHw":"");
+#else
+			printk("  idx[%03d]: 0x%p-->mbuf[0x%p],skb[0x%p]%s%s%s\n",  cnt, pPkthdr, pPkthdr->ph_mbuf, pPkthdr->ph_mbuf->skb,
+				(rxPkthdrRing[idx][cnt]&DESC_OWNED_BIT)==DESC_RISC_OWNED?" :CPU":" :SWCORE", 
+				(rxPkthdrRing[idx][cnt]&DESC_WRAP)!=0?" :WRAP":"",
+				cnt==currRxPkthdrDescIndex[idx]?"  <===currIdx":"");
+#endif
 		}
 	}
 	return SUCCESS;
@@ -1420,10 +1450,17 @@ int32 rtl_dumpIndexs(void)
 	int	i;
 
 	printk("Dump RX infos:\n");
+#if	defined(DELAY_REFILL_ETH_RX_BUF)
 	for(i=0;i<RTL865X_SWNIC_RXRING_HW_PKTDESC;i++) {
 		printk("	TotalCnt: %d, currPkthdrIdx: %d currMbufIdx: %d readyForHwIdx: %d crossBoundFlag: %d.\n", 
 			rxPkthdrRingCnt[i], currRxPkthdrDescIndex[i], currRxMbufDescIndex, rxDescReadyForHwIndex[i], rxDescCrossBoundFlag[i]);
 	}
+#else
+	for(i=0;i<RTL865X_SWNIC_RXRING_HW_PKTDESC;i++) {
+		printk("	TotalCnt: %d, currPkthdrIdx: %d currMbufIdx: %d\n", 
+			rxPkthdrRingCnt[i], currRxPkthdrDescIndex[i], currRxMbufDescIndex);
+	}
+#endif
 
 	printk("\nDump TX infos:\n");
 	for(i=0;i<RTL865X_SWNIC_TXRING_HW_PKTDESC;i++) {

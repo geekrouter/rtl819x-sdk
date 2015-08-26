@@ -61,7 +61,7 @@ int avoid_confliction_ip(char *wanIp, char *wanMask)
 	memcpy(&maskVal,myMaskVal>inMaskVal?&inMaskVal:&myMaskVal,4);
 	
 //printf("\r\n maskVal=[0x%x],__[%s-%u]\r\n",maskVal,__FILE__,__LINE__);
-		
+	
 	if((inIpVal & maskVal) == (myIpVal & maskVal)) //wan ip conflict lan ip 
 	{
 		int i=0, j=0;
@@ -184,7 +184,6 @@ void wan_connect(char *interface, char *option)
 	
 	apmib_get(MIB_WAN_DHCP,(void *)&wan_type);
 	apmib_get( MIB_DNS_MODE, (void *)&dns_mode);
-	
 	
 	
 	if(wan_type > 2 && !strcmp(interface, "ppp0")){
@@ -383,8 +382,11 @@ void wan_connect(char *interface, char *option)
 		RunSystemCmd(NULL_FILE, "route", "add", "-net", "default", "gw", remoteip, "dev", interface, NULL_STR);
 //		printf("%s(%d): wan_type=%d,dns_mode=%d\n",__FUNCTION__,__LINE__, wan_type,dns_mode);//Added for test
 #if 1//AVOID_CONFLICTION_IP
-		ret = avoid_confliction_ip(wanip,mask);
-
+		/*if br0 get ip need to check*/
+ 		if(strcmp(interface, "br0")){
+			ret = avoid_confliction_ip(wanip,mask);
+		}
+			
 #endif
 
 			

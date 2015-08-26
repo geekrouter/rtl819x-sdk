@@ -65,8 +65,9 @@
 #include <linux/jiffies.h>
 
 
-struct nat_table nat_tbl;
+static struct nat_table nat_tbl;
 static int32 rtl865x_enableNaptFourWay=FALSE;
+//static int32 _rtl865x_naptIdleCheck(int32 index);
 #if 0
 static int32 rtl865x_nat_callbackFn_for_del_ip(void *param);
 
@@ -128,6 +129,33 @@ static int32 _rtl865x_nat_register_event(void)
 	return SUCCESS;
 }
 #endif
+
+#define	RTL_NAT_AVG_INTERVAL	3
+#define	RTL_NAT_MIN_INTERVAL	1
+
+int32 rtl_nat_expire_interval_update(int proto, int32 interval)
+{
+	int32	asic_interval;
+
+	asic_interval = interval>RTL_NAT_AVG_INTERVAL?interval-RTL_NAT_AVG_INTERVAL:interval-RTL_NAT_MIN_INTERVAL;
+	asic_interval = asic_interval<RTL_NAT_MIN_INTERVAL?RTL_NAT_MIN_INTERVAL:asic_interval;
+	
+	if (proto==RTL865X_PROTOCOL_UDP) {
+		nat_tbl.tcp_timeout = asic_interval;
+	}else if (proto==RTL865X_PROTOCOL_UDP) {
+		nat_tbl.udp_timeout = asic_interval;
+	} else {
+		return FAILED;
+	}
+
+	/* Set ASIC timeout value */
+	rtl8651_setAsicNaptTcpLongTimeout(nat_tbl.tcp_timeout);
+	rtl8651_setAsicNaptTcpMediumTimeout(nat_tbl.tcp_timeout);
+	rtl8651_setAsicNaptTcpFastTimeout(nat_tbl.tcp_timeout);
+	rtl8651_setAsicNaptUdpTimeout(nat_tbl.udp_timeout);
+
+	return SUCCESS;
+}
 
 static int32 _rtl865x_nat_init(void)
 {
@@ -627,6 +655,7 @@ static int32 _rtl865x_addNaptConnection(rtl865x_napt_entry *naptEntry, rtl865x_p
 	#endif
 	int32		priority[2];
 #endif
+	//int32		elasped, del_conn_flags;
 	
 	uint32 outCollision=FALSE;
 	uint32 inCollision=FALSE;
@@ -669,13 +698,13 @@ static int32 _rtl865x_addNaptConnection(rtl865x_napt_entry *naptEntry, rtl865x_p
 
 		uint32 hash=out;
 		uint32 outAvailIdx=0xFFFFFFFF;
-		
+
 		for(i=0;i<4;i++)
 		{
 			nat_out = &nat_tbl.nat_bucket[hash];
 			if (NAT_INUSE(nat_out))
 			{
-			
+				/* collision with outbound */
 			}
 			else
 			{
@@ -709,7 +738,36 @@ static int32 _rtl865x_addNaptConnection(rtl865x_napt_entry *naptEntry, rtl865x_p
 	
 	nat_out = &nat_tbl.nat_bucket[out];
 	nat_in = &nat_tbl.nat_bucket[in];
+	#if 0
+	del_conn_flags = 0;
+	if (NAT_INUSE(nat_out))
+	{
+		elasped = _rtl865x_naptIdleCheck(out);
+		if ( ((nat_out->tuple_info.proto==RTL865X_PROTOCOL_UDP)&&(elasped>UDP_OVERRIDE_ELASPED_THRESHOLD)) 
+			|| ((nat_out->tuple_info.proto==RTL865X_PROTOCOL_TCP)&&(elasped>TCP_OVERRIDE_ELASPED_THRESHOLD)))
+		{
+			NAT_INVALID(nat_out);		/*	invalide	*/
+			nat_tbl.freeEntryNum++;
+			del_conn_flags++;
+		}
+	}
 
+	if (NAT_INUSE(nat_in))
+	{
+		elasped = _rtl865x_naptIdleCheck(in);
+		if ( ((nat_out->tuple_info.proto==RTL865X_PROTOCOL_UDP)&&(elasped>UDP_OVERRIDE_ELASPED_THRESHOLD)) 
+			|| ((nat_out->tuple_info.proto==RTL865X_PROTOCOL_TCP)&&(elasped>TCP_OVERRIDE_ELASPED_THRESHOLD)))
+		{
+			NAT_INVALID(nat_in);		/*	invalide	*/
+			nat_tbl.freeEntryNum++;
+			del_conn_flags++;
+		}
+	}
+
+	if (del_conn_flags==2) {
+		nat_tbl.connNum--;
+	}
+	#endif
 	if ( NAT_INUSE(nat_out) && NAT_INUSE(nat_in))
 	{
 		/*both outbound and inbound has been occupied*/
@@ -1129,8 +1187,23 @@ static int32 _rtl865x_delNaptConnection(rtl865x_napt_entry *naptEntry)
 	
 	return SUCCESS;
 }
+#if 0
+static int32 _rtl865x_naptIdleCheck(int32 index)
+{
+	rtl865x_tblAsicDrv_naptTcpUdpParam_t	entry;
+	int32 	hw_now;
+	
+	rtl8651_getAsicNaptTcpUdpTable(index, &entry);
 
-
+	hw_now = entry.ageSec;
+	
+	if (entry.isTcp) {
+		return (nat_tbl.tcp_timeout>hw_now?nat_tbl.tcp_timeout-hw_now:0);
+	} else {
+		return (nat_tbl.udp_timeout>hw_now?nat_tbl.udp_timeout-hw_now:0);
+	}
+}
+#endif
 static int32 _rtl865x_naptSync(rtl865x_napt_entry *naptEntry, uint32 refresh)
 {
 	rtl865x_tblAsicDrv_naptTcpUdpParam_t asic_nat_out;

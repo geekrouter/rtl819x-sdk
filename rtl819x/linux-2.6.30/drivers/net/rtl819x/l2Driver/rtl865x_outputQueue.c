@@ -100,7 +100,7 @@ int32 rtl865x_qosSetBandwidth(uint8 *netIfName, uint32 bps)
 	///////////////////////////////////////////////
 	/*	Egress bandwidth granularity was 64Kbps	*/
 	asicBandwidth = bps>>EGRESS_BANDWIDTH_GRANULARITY_BITLEN;
-	if (asicBandwidth>0 && (bps&(1<<(EGRESS_BANDWIDTH_GRANULARITY_BITLEN-1)))==1)
+	if (asicBandwidth>0 && (bps&(1<<(EGRESS_BANDWIDTH_GRANULARITY_BITLEN-1)))!=0)
 	{
 		asicBandwidth++;
 	}
@@ -124,7 +124,7 @@ int32 rtl865x_qosSetBandwidth(uint8 *netIfName, uint32 bps)
 	///////////////////////////////////////////////
 	/*	Ingress bandwidth granularity was 16Kbps	*/
 	wanPortAsicBandwidth=bps>>INGRESS_BANDWIDTH_GRANULARITY_BITLEN;
-	if (wanPortAsicBandwidth>0 && (bps&(1<<(INGRESS_BANDWIDTH_GRANULARITY_BITLEN-1)))==1)
+	if (wanPortAsicBandwidth>0 && (bps&(1<<(INGRESS_BANDWIDTH_GRANULARITY_BITLEN-1)))!=0)
 	{
 		wanPortAsicBandwidth++;
 	}

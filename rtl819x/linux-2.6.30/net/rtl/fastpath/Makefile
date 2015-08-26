@@ -25,13 +25,13 @@ ifeq ($(CONFIG_RTL_IPTABLES_FAST_PATH),m)
 EXTRA_CFLAGS += -DCONFIG_RTK_IPTABLES_FAST_PATH
 EXTRA_CFLAGS += -DCONFIG_FAST_PATH_MODULE
 
-FASTPATH_OBJ=$(TARGET)/fastpath_core.o $(TARGET)/fastpath_common.o $(TARGET)/filter.o $(TARGET)/fast_pptp_core.o $(TARGET)/fast_l2tp_core.o
+FASTPATH_OBJ=$(TARGET)/fastpath_core.o fastpath_common.o $(TARGET)/filter.o $(TARGET)/fast_pptp_core.o $(TARGET)/fast_l2tp_core.o
 FASTPATH_MODULE=$(TARGET)/fastpath.o
 obj-$(CONFIG_RTL_IPTABLES_FAST_PATH) += $(FASTPATH_MODULE)
 fastpath-objs := $(FASTPATH_OBJ)
 
 else
-obj-$(CONFIG_RTL_IPTABLES_FAST_PATH) += $(TARGET)/fastpath_core.o $(TARGET)/fastpath_common.o $(TARGET)/filter.o $(TARGET)/fast_pptp_core.o $(TARGET)/fast_l2tp_core.o
+obj-$(CONFIG_RTL_IPTABLES_FAST_PATH) += $(TARGET)/fastpath_core.o fastpath_common.o $(TARGET)/filter.o $(TARGET)/fast_pptp_core.o $(TARGET)/fast_l2tp_core.o
 ifeq ($(CONFIG_RTL_FAST_FILTER), y)
 obj-$(CONFIG_RTL_IPTABLES_FAST_PATH) += $(TARGET)/fast_filter.o
 else
